@@ -1,0 +1,26 @@
+# Local builds and developer state
+.DS_Store
+.build/
+build/
+DerivedData/
+xcuserdata/
+*.xcuserstate
+.local/
+dist/
+# Credentials and signing material
+.env
+.env.*
+!.env.example
+*.p12
+*.pfx
+*.mobileprovision
+*.provisionprofile
+*.key
+*.der
+*.pem
+*.cer
+*.crt
+*.log
+*.jsonl
+# Local integration notes
+AVATAR_API.md

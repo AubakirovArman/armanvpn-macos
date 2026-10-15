@@ -1,0 +1,22 @@
+{
+  "tool": "built-in image_gen",
+  "reference": "armanVPN/Assets.xcassets/ArmanPoster.imageset/arman-poster.png",
+  "assets": [
+    {
+      "file": "armanVPN/Assets.xcassets/ArmanSkeptical.imageset/arman-skeptical.png",
+      "prompt": "Use case: identity-preserve. Input image is an identity and art-style reference: use ONLY the adult man's recognizable face from the supplied poster. Create a single square premium illustrated head-and-shoulders reaction avatar for his private humorous macOS VPN app. Same dark wavy hair, beard, facial structure and warm skin tone, black jacket. Expression: comically skeptical and mildly disappointed, raised eyebrow, pursed lips, looking at an imaginary underpowered 8 GB laptop. Friendly playful teasing, not angry or cruel. Cinematic polished semi-realistic poster illustration matching the reference, warm amber rim light and subtle cool blue edge light, excellent recognizable face likeness. Center face, whole hair and chin visible, leave 10 percent transparent margin. Clean cutout on genuinely transparent background. No text, no logos, no laptop, no eagle, no extra people, no UI. This is the 8 GB reaction avatar; intended to remain legible at 96 px."
+    },
+    {
+      "file": "armanVPN/Assets.xcassets/ArmanUnimpressed.imageset/arman-unimpressed.png",
+      "prompt": "Use case: identity-preserve. The first supplied poster is the man's identity reference, the second image is the exact companion avatar art style and framing to match. Create ONE square head-and-shoulders reaction avatar of this same recognizable adult man for his private fun VPN macOS app. Preserve his face, dark wavy hair, beard, black jacket, golden amber rim light and subtle cool blue edge light. Expression: amused but unimpressed with a 16 GB Mac, raised eyebrow and very small ironic half-smile, a subtle one-hand palm-up shrug. Friendly teasing, expressive face, not a different person. Premium polished semi-realistic poster illustration, same scale as second image, centered entire head and chin visible, clean edges, 10 percent transparent margin, genuinely transparent background. No writing, logos, UI, laptop, extra people or scenery."
+    },
+    {
+      "file": "armanVPN/Assets.xcassets/ArmanApproved.imageset/arman-approved.png",
+      "prompt": "Use case: identity-preserve. The first supplied poster is the man's identity reference, the second image is the exact companion avatar art style and framing to match. Create ONE square head-and-shoulders reaction avatar of this same recognizable adult man for his private fun VPN macOS app. Preserve his face, dark wavy hair, beard, black jacket, golden amber rim light and subtle cool blue edge light. Expression: confident warm approval of a 32 GB or better Mac, a happy approving smile and a clear thumbs-up gesture beside his face. Relaxed boss energy, friendly and humorous. Premium polished semi-realistic poster illustration, same scale as second image, centered entire head and chin visible, clean edges, 10 percent transparent margin, genuinely transparent background. No writing, logos, UI, laptop, extra people or scenery."
+    },
+    {
+      "file": "design/arman-app-icon-source.png",
+      "prompt": "Use case: logo-brand. Create ONE polished macOS app icon for armanVPN, a private humorous VPN app for friends. Use the recognizable adult man's face from reference one, illustration style matching reference two. Square 1024 by 1024 composition suitable as an app icon: dark midnight navy background, warm champagne gold outer framing, bold simple silhouette of this same dark-haired bearded man with a confident friendly smirk, a minimal luminous gold shield symbol beside his shoulder and a subtle eagle feather motif. Premium clean cinematic semi-realistic illustrated icon, face recognizable at small size, strong uncluttered silhouette, no photographic poster collage, no type or letters, no words, no tiny UI, no fake corporate logos. Keep face well inside the central 75 percent. Full square image with opaque background, soft rounded-square inner treatment."
+    }
+  ]
+}

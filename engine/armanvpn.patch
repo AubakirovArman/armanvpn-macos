@@ -1,0 +1,512 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 9bc57b5..5dcede4 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -403,3 +403,5 @@ Credentials and profiles:
+ - Don't hard-fail the connection if there is an IP address mismatch in the IPSec ID payload. This seems to cause issues with some users. The warning will be logged instead.
+ - Don't require a username to be specified for password logins. The user will be prompted for it if needed.
+ - Improved MFA prompts retrieval from the server.
++## armanVPN local diagnostics
++* Expose bounded in-memory connection and disconnect reason codes through the authorized command socket. No authentication data or packet contents are recorded.
+diff --git a/apps/snx-rs/src/main.rs b/apps/snx-rs/src/main.rs
+index e61b47c..bb7df8e 100644
+--- a/apps/snx-rs/src/main.rs
++++ b/apps/snx-rs/src/main.rs
+@@ -216,7 +216,7 @@ async fn main_command<F>(factory: F) -> anyhow::Result<()>
+ where
+     F: TunnelConnectorFactory + Send + Sync + 'static,
+ {
+-    let instance = Platform::get().new_single_instance("/var/run/snx-rs.lock")?;
++    let instance = Platform::get().new_single_instance("/var/run/armanvpn.lock")?;
+     if !instance.is_single() {
+         eprintln!("{}", tr!("cli-another-instance-running"));
+         return Ok(());
+diff --git a/crates/snxcore/src/controller.rs b/crates/snxcore/src/controller.rs
+index f6fd67c..d2ea2c2 100644
+--- a/crates/snxcore/src/controller.rs
++++ b/crates/snxcore/src/controller.rs
+@@ -141,7 +141,9 @@ where
+                 }
+             }
+             TunnelServiceResponse::Error(e) => Err(anyhow!(e)),
+-            TunnelServiceResponse::Ok => Err(anyhow!("Invalid response!")),
++            TunnelServiceResponse::Ok | TunnelServiceResponse::Diagnostics(_) => {
++                Err(anyhow!(tr!("error-invalid-response")))
++            }
+         }
+     }
+ 
+diff --git a/crates/snxcore/src/lib.rs b/crates/snxcore/src/lib.rs
+index 6651119..c8fcc3e 100644
+--- a/crates/snxcore/src/lib.rs
++++ b/crates/snxcore/src/lib.rs
+@@ -1,5 +1,6 @@
+ pub mod browser;
+ pub mod controller;
++pub mod diagnostics;
+ pub mod model;
+ pub mod nat;
+ pub mod otp;
+diff --git a/crates/snxcore/src/model.rs b/crates/snxcore/src/model.rs
+index 0e756f9..630f782 100644
+--- a/crates/snxcore/src/model.rs
++++ b/crates/snxcore/src/model.rs
+@@ -482,12 +482,13 @@ pub enum TunnelServiceRequest {
+     ChallengeCode(String, TunnelParams),
+     Disconnect,
+     GetStatus,
++    GetDiagnostics,
+     Rekey,
+ }
+ 
+ impl TunnelServiceRequest {
+     pub fn is_polling(&self) -> bool {
+-        matches!(self, Self::GetStatus)
++        matches!(self, Self::GetStatus | Self::GetDiagnostics)
+     }
+ }
+ 
+@@ -496,6 +497,7 @@ pub enum TunnelServiceResponse {
+     Ok,
+     Error(String),
+     ConnectionStatus(ConnectionStatus),
++    Diagnostics(crate::diagnostics::DiagnosticSnapshot),
+ }
+ 
+ #[derive(Debug, Clone, PartialEq)]
+diff --git a/crates/snxcore/src/server.rs b/crates/snxcore/src/server.rs
+index 927f980..38f2b01 100644
+--- a/crates/snxcore/src/server.rs
++++ b/crates/snxcore/src/server.rs
+@@ -1,5 +1,6 @@
+ use std::sync::{Arc, Mutex, MutexGuard};
+ 
++use crate::diagnostics::{self, DiagnosticCode};
+ use anyhow::{Context, anyhow};
+ use bytes::Bytes;
+ use futures::{SinkExt, StreamExt};
+@@ -18,7 +19,7 @@ use crate::{
+     tunnel::{TunnelCommand, TunnelConnector, TunnelConnectorFactory, TunnelEvent, VpnTunnel},
+ };
+ 
+-pub const DEFAULT_NAME: &str = "snx-rs.sock";
++pub const DEFAULT_NAME: &str = "armanvpn.sock";
+ const MAX_PACKET_SIZE: usize = 1_000_000;
+ 
+ enum ConnectorRequest {
+@@ -296,12 +297,14 @@ impl<F: TunnelConnectorFactory + Send + Sync + 'static> CommandServer<F> {
+             && let Err(e) = handle.handle_event(event.clone()).await
+         {
+             warn!("Tunnel error: {}", e);
++            diagnostics::record_control_error(&e);
+             state.reset();
+             return;
+         }
+ 
+         match event {
+             TunnelEvent::Connected(info) => {
++                diagnostics::record(DiagnosticCode::Connected);
+                 let poller = Platform::get()
+                     .new_network_interface()
+                     .new_stats_poller(&info.interface_name)
+@@ -312,7 +315,10 @@ impl<F: TunnelConnectorFactory + Send + Sync + 'static> CommandServer<F> {
+                 }
+                 g.status = ConnectionStatus::Connected(info);
+             }
+-            TunnelEvent::Disconnected => state.reset(),
++            TunnelEvent::Disconnected => {
++                diagnostics::record(DiagnosticCode::Disconnected);
++                state.reset();
++            }
+             TunnelEvent::Rekeyed(session) => {
+                 let mut g = state.lock();
+                 if let ConnectionStatus::Connected(ref mut info) = g.status {
+@@ -383,6 +389,7 @@ impl<F: TunnelConnectorFactory + Send + Sync + 'static> ServerHandler<F> {
+                 Err(e) => TunnelServiceResponse::Error(e.to_string()),
+             },
+             TunnelServiceRequest::GetStatus => TunnelServiceResponse::ConnectionStatus(self.get_status().await),
++            TunnelServiceRequest::GetDiagnostics => TunnelServiceResponse::Diagnostics(diagnostics::snapshot()),
+             TunnelServiceRequest::ChallengeCode(code, _) => match self.challenge_code(&code).await {
+                 Ok(response) => response,
+                 Err(e) => {
+@@ -425,6 +432,7 @@ impl<F: TunnelConnectorFactory + Send + Sync + 'static> ServerHandler<F> {
+         tokio::spawn(async move {
+             if let Err(e) = tunnel.run(command_receiver, sender).await {
+                 warn!("Tunnel error: {}", e);
++                diagnostics::record(DiagnosticCode::TunnelError);
+             }
+         });
+ 
+@@ -492,6 +500,7 @@ impl<F: TunnelConnectorFactory + Send + Sync + 'static> ServerHandler<F> {
+     }
+ 
+     async fn disconnect(&mut self) -> anyhow::Result<()> {
++        diagnostics::record(DiagnosticCode::UserDisconnect);
+         self.state.fire_cancel();
+ 
+         if let Some(handle) = self.state.connector() {
+diff --git a/crates/snxcore/src/tunnel/gateway.rs b/crates/snxcore/src/tunnel/gateway.rs
+index d69cfe6..7fdd7f1 100644
+--- a/crates/snxcore/src/tunnel/gateway.rs
++++ b/crates/snxcore/src/tunnel/gateway.rs
+@@ -214,7 +214,11 @@ impl CccGatewayConnector {
+         for ca_cert in &self.params.ca_cert {
+             let data = tokio::fs::read(ca_cert).await?;
+             let cert = Certificate::from_pem(&data).or_else(|_| Certificate::from_der(&data))?;
+-            builder = builder.tls_certs_merge(Some(cert));
++            // armanVPN supplies one user-approved leaf certificate as the exclusive trust anchor.
++            // Gateways commonly advertise an internal IP in SAN while clients use an external IP.
++            builder = builder
++                .tls_certs_only(Some(cert))
++                .tls_danger_accept_invalid_hostnames(true);
+         }
+ 
+         if self.params.ignore_server_cert {
+@@ -249,7 +253,7 @@ impl CccGatewayConnector {
+             }
+         }
+ 
+-        let client = builder.build()?;
++        let client = builder.redirect(reqwest::redirect::Policy::none()).build()?;
+ 
+         trace!("Request to server: {}", expr);
+ 
+diff --git a/crates/snxcore/src/tunnel/ipsec/ikev2.rs b/crates/snxcore/src/tunnel/ipsec/ikev2.rs
+index 27e3655..214b7e5 100644
+--- a/crates/snxcore/src/tunnel/ipsec/ikev2.rs
++++ b/crates/snxcore/src/tunnel/ipsec/ikev2.rs
+@@ -356,6 +356,10 @@ impl Ikev2TunnelConnector {
+         debug!("OM DNS servers: {:?}", self.ipsec_session.dns);
+         debug!("OM search domains: {:?}", self.ipsec_session.domains);
+         debug!("IKE SA lifetime: {} seconds", ike_lifetime.as_secs());
++        crate::diagnostics::record_value(
++            crate::diagnostics::DiagnosticCode::OfficeModeLeaseLifetime,
++            self.ipsec_session.address_lifetime.as_secs(),
++        );
+         debug!(
+             "Office mode address lifetime: {} seconds",
+             self.ipsec_session.address_lifetime.as_secs()
+@@ -403,6 +407,7 @@ impl Ikev2TunnelConnector {
+             );
+ 
+             if msg.payloads.iter().any(|p| matches!(p, Payload::Delete(_))) {
++                crate::diagnostics::record(crate::diagnostics::DiagnosticCode::GatewayDeletedSa);
+                 self.terminate_tunnel(true).await?;
+             }
+         }
+@@ -415,12 +420,15 @@ impl Ikev2TunnelConnector {
+         }
+ 
+         if self.ipsec_session.ike_timestamp + self.ipsec_session.ike_lifetime <= Local::now() {
++            crate::diagnostics::record(crate::diagnostics::DiagnosticCode::IkeExpired);
+             info!("IKE SA expired, disconnecting tunnel");
+             let _ = self.terminate_tunnel(true).await;
+             return Ok(());
+         }
+ 
+-        self.handle_peer_request().await?;
++        self.handle_peer_request().await.inspect_err(|_| {
++            crate::diagnostics::record(crate::diagnostics::DiagnosticCode::PeerRequestFailed);
++        })?;
+ 
+         self.renew_address_lease().await?;
+ 
+@@ -435,7 +443,9 @@ impl Ikev2TunnelConnector {
+             .is_some_and(|last| SystemTime::now().duration_since(last).unwrap_or(lifetime) >= lifetime);
+ 
+         if due {
+-            self.rekey_tunnel().await?;
++            self.rekey_tunnel().await.inspect_err(|_| {
++                crate::diagnostics::record(crate::diagnostics::DiagnosticCode::IpsecRekeyFailed);
++            })?;
+         }
+ 
+         Ok(())
+@@ -449,6 +459,7 @@ impl Ikev2TunnelConnector {
+         match self.service.handle_request(&request).await? {
+             PeerRequest::ChildSaRekeyed => self.apply_new_child_sa().await,
+             PeerRequest::Deleted => {
++                crate::diagnostics::record(crate::diagnostics::DiagnosticCode::GatewayDeletedSa);
+                 info!("Gateway deleted the SA, disconnecting tunnel");
+                 self.terminate_tunnel(true).await
+             }
+@@ -471,7 +482,14 @@ impl Ikev2TunnelConnector {
+             return Ok(());
+         }
+ 
+-        let lease = self.service.renew_office_mode(self.ipsec_session.address).await?;
++        crate::diagnostics::record(crate::diagnostics::DiagnosticCode::OfficeModeRenewalStarted);
++        let lease = self
++            .service
++            .renew_office_mode(self.ipsec_session.address)
++            .await
++            .inspect_err(|_| {
++                crate::diagnostics::record(crate::diagnostics::DiagnosticCode::OfficeModeRenewalFailed);
++            })?;
+ 
+         self.last_address_renewal = Some(SystemTime::now());
+         self.persist_session();
+diff --git a/crates/snxcore/src/tunnel/ipsec/keepalive.rs b/crates/snxcore/src/tunnel/ipsec/keepalive.rs
+index 293a74f..a3bcd33 100644
+--- a/crates/snxcore/src/tunnel/ipsec/keepalive.rs
++++ b/crates/snxcore/src/tunnel/ipsec/keepalive.rs
+@@ -99,8 +99,10 @@ impl KeepaliveRunner {
+                         }
+                         num_failures = 0;
+                     } else {
++                        crate::diagnostics::record(crate::diagnostics::DiagnosticCode::KeepaliveMissed);
+                         num_failures += 1;
+                         if num_failures >= KEEPALIVE_MAX_RETRIES {
++                            crate::diagnostics::record(crate::diagnostics::DiagnosticCode::KeepaliveTimeout);
+                             warn!("Maximum number of keepalive retries reached, exiting");
+                             break;
+                         }
+diff --git a/crates/snxcore/src/tunnel/ssl.rs b/crates/snxcore/src/tunnel/ssl.rs
+index 59faa23..80aa6c8 100644
+--- a/crates/snxcore/src/tunnel/ssl.rs
++++ b/crates/snxcore/src/tunnel/ssl.rs
+@@ -70,6 +70,7 @@ where
+         let from_wire = stream.map_err(Into::into).forward(&mut tx);
+ 
+         futures::future::select(to_wire, from_wire).await;
++        crate::diagnostics::record(crate::diagnostics::DiagnosticCode::SslTransportClosed);
+     };
+ 
+     tokio::spawn(channel);
+@@ -130,9 +131,25 @@ impl SslTunnel {
+             builder.danger_accept_invalid_certs(true);
+         }
+ 
++        if !params.ca_cert.is_empty() {
++            builder
++                .disable_built_in_roots(true)
++                .danger_accept_invalid_hostnames(true);
++        }
++
+         let tls: tokio_native_tls::TlsConnector = builder.build()?.into();
+         let stream = tls.connect(params.server_name.as_str(), tcp).await?;
+ 
++        if let Some(path) = params.ca_cert.first() {
++            let expected = tokio::fs::read(path).await?;
++            let expected = Certificate::from_pem(&expected).or_else(|_| Certificate::from_der(&expected))?;
++            let actual = stream
++                .get_ref()
++                .peer_certificate()?
++                .ok_or_else(|| anyhow::anyhow!("Missing peer certificate"))?;
++            anyhow::ensure!(actual.to_der()? == expected.to_der()?, "Peer certificate changed");
++        }
++
+         let (sender, receiver) = make_channel(stream);
+ 
+         debug!("Tunnel connected");
+diff --git a/crates/snxcore/src/tunnel/ssl/keepalive.rs b/crates/snxcore/src/tunnel/ssl/keepalive.rs
+index 99ac4bf..6c08c2a 100644
+--- a/crates/snxcore/src/tunnel/ssl/keepalive.rs
++++ b/crates/snxcore/src/tunnel/ssl/keepalive.rs
+@@ -44,6 +44,7 @@ impl KeepaliveRunner {
+             loop {
+                 if Platform::get().new_network_interface().is_online() {
+                     if keepalive_counter.load(Ordering::SeqCst) >= KEEPALIVE_MAX_RETRIES {
++                        crate::diagnostics::record(crate::diagnostics::DiagnosticCode::SslKeepaliveTimeout);
+                         let msg = "No response for keepalive packets, tunnel appears stuck";
+                         warn!(msg);
+                         break;
+diff --git a/docs/troubleshooting.md b/docs/troubleshooting.md
+index 9f06c44..f22f6a1 100644
+--- a/docs/troubleshooting.md
++++ b/docs/troubleshooting.md
+@@ -9,3 +9,10 @@
+ | IPsec over UDP connects, but no traffic passes and the tunnel drops after about 20 seconds        | A gateway behind NAT may not accept ESP over UDP although its NAT-T port answers, so `transport-type=auto` still picks UDP. Set `transport-type=tcpt`, and `use-internal-gateway-ip=true` as described above.                  |
+ | Connect attempt silently times out after ~10 s with `client error (Connect): operation timed out` | Some Check Point gateways stop responding to TLS 1.3 ClientHellos issued by recent OpenSSL releases (3.5+). The default `tls-version-max=1.2` works around this. If a gateway requires TLS 1.3, set `tls-version-max=default`. |
+ | Not all remote sites are reachable and not all routes are advertised                              | A policy-based access is required via [machine certificate authentication](certificates.md).                                                                                                                                   |
++# armanVPN local diagnostics
++
++The armanVPN integration adds a `GetDiagnostics` command to the existing authorized
++local command socket. It returns a process instance ID and the last 128 ordered,
++timestamped reason codes, including keepalive timeouts and gateway SA deletion.
++It contains no authentication data, certificates, packet contents or error text.
++It is memory-only and resets when the engine process restarts.
+diff --git a/crates/snxcore/src/diagnostics.rs b/crates/snxcore/src/diagnostics.rs
+new file mode 100644
+index 0000000..03f4bc5
+--- /dev/null
++++ b/crates/snxcore/src/diagnostics.rs
+@@ -0,0 +1,178 @@
++use std::{
++    collections::VecDeque,
++    sync::{LazyLock, Mutex},
++};
++
++use chrono::{DateTime, Utc};
++use serde::{Deserialize, Serialize};
++use uuid::Uuid;
++
++const CAPACITY: usize = 128;
++
++#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
++#[serde(rename_all = "snake_case")]
++pub enum DiagnosticCode {
++    Connected,
++    Disconnected,
++    UserDisconnect,
++    TunnelError,
++    ControlError,
++    IkeExchangeTimeout,
++    IkeControlNetworkError,
++    IkeIntegrityFailed,
++    IkeMalformedPacket,
++    PeerRequestFailed,
++    OfficeModeLeaseLifetime,
++    OfficeModeRenewalStarted,
++    OfficeModeRenewalFailed,
++    IpsecRekeyFailed,
++    KeepaliveMissed,
++    KeepaliveTimeout,
++    GatewayDeletedSa,
++    IkeExpired,
++    SslTransportClosed,
++    SslKeepaliveTimeout,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct DiagnosticEvent {
++    pub sequence: u64,
++    pub at: DateTime<Utc>,
++    pub code: DiagnosticCode,
++    #[serde(skip_serializing_if = "Option::is_none")]
++    pub value: Option<u64>,
++}
++
++#[derive(Debug, Clone, Serialize, Deserialize)]
++pub struct DiagnosticSnapshot {
++    pub instance: Uuid,
++    pub events: Vec<DiagnosticEvent>,
++}
++
++struct Journal {
++    instance: Uuid,
++    sequence: u64,
++    events: VecDeque<DiagnosticEvent>,
++}
++
++impl Journal {
++    fn new() -> Self {
++        Self {
++            instance: Uuid::new_v4(),
++            sequence: 0,
++            events: VecDeque::new(),
++        }
++    }
++
++    fn record(&mut self, code: DiagnosticCode) {
++        self.record_value(code, None);
++    }
++
++    fn record_value(&mut self, code: DiagnosticCode, value: Option<u64>) {
++        self.sequence += 1;
++        self.events.push_back(DiagnosticEvent {
++            sequence: self.sequence,
++            at: Utc::now(),
++            code,
++            value,
++        });
++        if self.events.len() > CAPACITY {
++            self.events.pop_front();
++        }
++    }
++
++    fn snapshot(&self) -> DiagnosticSnapshot {
++        DiagnosticSnapshot {
++            instance: self.instance,
++            events: self.events.iter().cloned().collect(),
++        }
++    }
++}
++
++static JOURNAL: LazyLock<Mutex<Journal>> = LazyLock::new(|| Mutex::new(Journal::new()));
++
++pub fn record(code: DiagnosticCode) {
++    JOURNAL.lock().unwrap_or_else(|e| e.into_inner()).record(code);
++}
++
++pub fn snapshot() -> DiagnosticSnapshot {
++    JOURNAL.lock().unwrap_or_else(|e| e.into_inner()).snapshot()
++}
++
++pub fn record_value(code: DiagnosticCode, value: u64) {
++    JOURNAL
++        .lock()
++        .unwrap_or_else(|e| e.into_inner())
++        .record_value(code, Some(value));
++}
++
++pub fn record_control_error(error: &anyhow::Error) {
++    record(control_error_code(error));
++}
++
++fn control_error_code(error: &anyhow::Error) -> DiagnosticCode {
++    if error.chain().any(|e| e.is::<tokio::time::error::Elapsed>()) {
++        DiagnosticCode::IkeExchangeTimeout
++    } else if error.chain().any(|e| e.is::<std::io::Error>()) {
++        DiagnosticCode::IkeControlNetworkError
++    } else if error.chain().any(|e| e.to_string().contains("integrity check failed")) {
++        DiagnosticCode::IkeIntegrityFailed
++    } else if error.chain().any(|e| {
++        let text = e.to_string();
++        text.contains("IKEv2 message shorter")
++            || text.contains("Not an IKEv2 message")
++            || text.contains("IKEv2 message claims")
++    }) {
++        DiagnosticCode::IkeMalformedPacket
++    } else {
++        DiagnosticCode::ControlError
++    }
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn bounded_history_keeps_order_across_snapshots() {
++        let mut journal = Journal::new();
++        for _ in 0..CAPACITY + 5 {
++            journal.record(DiagnosticCode::KeepaliveMissed);
++        }
++        let before = journal.snapshot();
++        assert_eq!(before.events.len(), CAPACITY);
++        assert_eq!(before.events[0].sequence, 6);
++        journal.record(DiagnosticCode::KeepaliveTimeout);
++        let after = journal.snapshot();
++        assert_eq!(before.instance, after.instance);
++        assert_eq!(after.events.last().unwrap().code, DiagnosticCode::KeepaliveTimeout);
++        assert!(after.events.last().unwrap().sequence > before.events.last().unwrap().sequence);
++        assert_ne!(Journal::new().instance, journal.instance);
++    }
++
++    #[test]
++    fn wire_events_have_only_fixed_codes_and_metadata() {
++        let mut journal = Journal::new();
++        journal.record(DiagnosticCode::GatewayDeletedSa);
++        let json = serde_json::to_value(journal.snapshot()).unwrap();
++        let event = json["events"][0].as_object().unwrap();
++        assert_eq!(event.len(), 3);
++        assert_eq!(event["code"], "gateway_deleted_sa");
++        assert!(event.contains_key("sequence"));
++        assert!(event.contains_key("at"));
++    }
++
++    #[test]
++    fn error_details_never_enter_the_diagnostic_payload() {
++        let error = anyhow::anyhow!("SK payload integrity check failed: secret-test-material");
++        assert_eq!(control_error_code(&error), DiagnosticCode::IkeIntegrityFailed);
++        let mut journal = Journal::new();
++        journal.record(control_error_code(&error));
++        let json = serde_json::to_string(&journal.snapshot()).unwrap();
++        assert!(!json.contains("secret-test-material"));
++        assert_eq!(
++            control_error_code(&anyhow::anyhow!("unrecognized test error")),
++            DiagnosticCode::ControlError
++        );
++    }
++}
