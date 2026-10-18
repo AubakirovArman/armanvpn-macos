@@ -3,8 +3,8 @@ import SwiftUI
 
 struct ContentView: View {
     @Bindable var vpn: VPNController
+    @Bindable var tools: DesktopTools
     var personality = ArmanPersonality.current
-    @State private var showingLog = false
     private let accent = ArmanBrand.gold
 
     var body: some View {
@@ -15,16 +15,17 @@ struct ContentView: View {
                     Spacer()
                     Image(systemName: "sparkles").foregroundStyle(accent)
                 }
-                Text("СВЯЗЬ РЕШАЕТ. АРМАН ПОДКЛЮЧАЕТ.")
+                Text("ТВОЯ СЕТЬ. ТВОЙ MAC. ТВОЙ ЗАПАС.")
                     .font(.system(size: 8, weight: .bold, design: .monospaced)).tracking(1.4)
                     .foregroundStyle(accent)
-                Image("ArmanPoster").resizable().scaledToFit()
+                Image("ArmanPoster").resizable().scaledToFill().frame(height: 220).clipped()
                     .clipShape(RoundedRectangle(cornerRadius: 16))
                     .overlay(RoundedRectangle(cornerRadius: 16).stroke(accent.opacity(0.25)))
                     .accessibilityLabel("Постер Армана с орлом, логотипами Самрук-Казына и Казахтелеком")
                 VStack(alignment: .leading, spacing: 6) {
-                    sidebarButton("Подключение", symbol: "network", selected: !showingLog) { showingLog = false }
-                    sidebarButton("Журнал", symbol: "list.bullet.rectangle", selected: showingLog) { showingLog = true }
+                    ForEach(HubSection.allCases) { section in
+                        sidebarButton(section.title, symbol: section.symbol, selected: tools.section == section) { tools.section = section }
+                    }
                 }
                 Spacer()
                 VStack(alignment: .leading, spacing: 9) {
@@ -45,20 +46,26 @@ struct ContentView: View {
                 VStack(alignment: .leading, spacing: 22) {
                     HStack(alignment: .firstTextBaseline) {
                         VStack(alignment: .leading, spacing: 7) {
-                            Text(showingLog ? "ЗАКУЛИСЬЕ СОЕДИНЕНИЯ" : "ARMAN NETWORK / FRIENDS EDITION")
+                            Text("ARMAN / \(tools.section.title.uppercased())")
                                 .font(.system(size: 9, weight: .bold, design: .monospaced)).tracking(2).foregroundStyle(accent)
-                            Text(showingLog ? "Всё под контролем." : "Мощная сеть.\nЛичный подход.")
+                            Text(tools.section.headline)
                                 .font(.system(size: 32, weight: .semibold)).lineSpacing(1)
                         }
                         Spacer()
                         if vpn.busy { ProgressView().controlSize(.small) }
                     }
-                    if showingLog { logView } else { connectionView }
+                    switch tools.section {
+                    case .overview: HubOverview(vpn: vpn, tools: tools)
+                    case .vpn: connectionView
+                    case .codex: CodexUsageView(tools: tools)
+                    case .mac: MacHealthView(tools: tools)
+                    case .log: logView
+                    }
                 }.padding(30).frame(maxWidth: 710).frame(maxWidth: .infinity)
             }
             .background(ArmanBrand.night)
         }
-        .frame(minWidth: 960, minHeight: 700).tint(accent).preferredColorScheme(.dark)
+        .frame(minWidth: 960, minHeight: 780).tint(accent).preferredColorScheme(.dark)
         .sheet(item: $vpn.certificate) { certificate in
             CertificateView(certificate: certificate, accept: vpn.acceptCertificate, reject: vpn.rejectCertificate)
         }

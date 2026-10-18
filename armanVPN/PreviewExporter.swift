@@ -9,6 +9,15 @@ enum PreviewExporter {
         let output = URL(fileURLWithPath: directory, isDirectory: true)
         try FileManager.default.createDirectory(at: output, withIntermediateDirectories: true)
         let vpn = VPNController(startMonitoring: false, loadSavedProfile: false)
+        let tools = DesktopTools(startMonitoring: false)
+        tools.codex = try JSONDecoder().decode(CodexUsageSnapshot.self, from: Data(#"{"rateLimits":{"limitId":"codex","primary":{"usedPercent":3,"windowDurationMins":10080,"resetsAt":1792887912},"secondary":null}}"#.utf8))
+        tools.codexUpdatedAt = Date()
+        tools.health = MacHealthSnapshot(temperatures: [.init(id: "Tp0P", celsius: 52), .init(id: "Tg0P", celsius: 45)],
+                                        fans: [.init(id: 0, rpm: 1850, minimum: 0, maximum: 5700, mode: 0), .init(id: 1, rpm: 1800, minimum: 0, maximum: 5200, mode: 0)],
+                                        fanCount: 2, sampledAt: Date())
+        tools.temperatureHistory = (0..<60).map { index in
+            TemperaturePoint(date: Date().addingTimeInterval(Double(index - 59) * 3), value: 50 + sin(Double(index) / 8) * 5 + Double(index) / 30)
+        }
         vpn.profile.host = "vpn.company.kz"
         vpn.profile.username = "your.name"
         vpn.profile.rememberPassword = true
@@ -16,8 +25,13 @@ enum PreviewExporter {
         vpn.connected = true
         vpn.details = ConnectionDetails(session: "preview", address: "10.10.0.24/24", interface: "utun", transport: "SSL",
                                         received: 52_432_000, sent: 10_430_000, since: Date().addingTimeInterval(-864))
-        try render(ContentView(vpn: vpn), size: NSSize(width: 1040, height: 800), to: output.appendingPathComponent("app.png"))
-        try render(MenuBarPanel(vpn: vpn), size: NSSize(width: 360, height: 474), to: output.appendingPathComponent("menu.png"))
+        for section in [HubSection.overview, .codex, .mac, .vpn] {
+            tools.section = section
+            try render(ContentView(vpn: vpn, tools: tools), size: NSSize(width: 1080, height: 860), to: output.appendingPathComponent("\(section.rawValue).png"))
+        }
+        try render(MenuBarPanel(vpn: vpn, tools: tools), size: NSSize(width: 360, height: 460), to: output.appendingPathComponent("menu.png"))
+        try render(SuperAppMenuLabel(connected: true, tools: tools).padding(8).frame(width: 210, height: 32).background(.black).foregroundStyle(.white),
+                   size: NSSize(width: 210, height: 32), to: output.appendingPathComponent("menu-label.png"))
         for memory in [8, 16, 32, 64] {
             try render(ArmanMemoryCard(personality: ArmanPersonality(memoryGB: memory))
                 .padding(20).frame(width: 600, height: 155).background(ArmanBrand.night).preferredColorScheme(.dark),
