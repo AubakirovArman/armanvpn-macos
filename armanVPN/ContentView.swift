@@ -165,7 +165,7 @@ struct ContentView: View {
                     Toggle("Восстанавливать после разрыва", isOn: $vpn.profile.reconnect)
                     Text("Через VPN направляются маршруты, полученные от шлюза.").font(.caption).foregroundStyle(.secondary)
                 }.formStyle(.columns).padding(.top, 12)
-            }.disabled(vpn.busy || vpn.connected)
+            }.disclosureGroupStyle(FullWidthDisclosureStyle()).disabled(vpn.busy || vpn.connected)
 
             HStack(spacing: 14) {
                 Image(systemName: "gearshape.2").font(.title2).foregroundStyle(.secondary)
@@ -229,6 +229,7 @@ struct ContentView: View {
     private func sidebarButton(_ title: String, symbol: String, selected: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Label(title, systemImage: symbol).frame(maxWidth: .infinity, alignment: .leading).padding(11)
+                .contentShape(Rectangle())
                 .background(selected ? accent.opacity(0.14) : .clear, in: RoundedRectangle(cornerRadius: 9))
                 .foregroundStyle(selected ? accent : .primary)
         }.buttonStyle(.plain)

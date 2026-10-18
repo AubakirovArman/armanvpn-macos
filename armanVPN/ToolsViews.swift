@@ -147,6 +147,7 @@ struct MacHealthView: View {
             if let error = tools.healthError {
                 Label(error, systemImage: "info.circle").font(.callout).foregroundStyle(.secondary)
             }
+            CoolingControlsView(cooling: tools.cooling, fans: tools.health?.fans ?? [])
             VStack(alignment: .leading, spacing: 18) {
                 HubEyebrow(title: "ВЕНТИЛЯТОРЫ", symbol: "fan", color: ArmanBrand.gold)
                 if tools.health?.fanCount == 0 {
@@ -173,9 +174,6 @@ struct MacHealthView: View {
                 } else {
                     Text(tools.healthEnabled ? "Данные о вентиляторах пока недоступны." : "Мониторинг выключен.").foregroundStyle(.secondary)
                 }
-                Divider()
-                Label("В этом выпуске — наблюдение за охлаждением. Ручное управление оборотами пока не добавлено.", systemImage: "info.circle")
-                    .font(.caption).foregroundStyle(.secondary)
             }.padding(20).hubCard()
 
             VStack(alignment: .leading, spacing: 16) {
@@ -191,7 +189,7 @@ struct MacHealthView: View {
             }.padding(20).hubCard()
 
             DisclosureGroup("Все доступные датчики · \(tools.health?.temperatures.count ?? 0)") {
-                VStack(spacing: 0) {
+                LazyVStack(spacing: 0) {
                     ForEach(tools.health?.temperatures ?? []) { sensor in
                         HStack {
                             Text("\(sensor.group) · \(sensor.id)")
@@ -199,8 +197,8 @@ struct MacHealthView: View {
                             Text("\(sensor.celsius, specifier: "%.1f") °C").monospacedDigit()
                         }.font(.caption).padding(.vertical, 7)
                     }
-                }.padding(.top, 10)
-            }.padding(20).hubCard()
+                }
+            }.disclosureGroupStyle(FullWidthDisclosureStyle()).hubCard()
         }
     }
 
@@ -247,6 +245,28 @@ struct HubEyebrow: View {
     let color: Color
     var body: some View {
         Label(title, systemImage: symbol).font(.system(size: 9, weight: .bold, design: .monospaced)).tracking(1.4).foregroundStyle(color)
+    }
+}
+
+struct FullWidthDisclosureStyle: DisclosureGroupStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) { configuration.isExpanded.toggle() }
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "chevron.right")
+                        .font(.caption.weight(.semibold))
+                        .rotationEffect(.degrees(configuration.isExpanded ? 90 : 0))
+                    configuration.label
+                    Spacer(minLength: 0)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(20).contentShape(Rectangle())
+            }.buttonStyle(.plain)
+                .accessibilityValue(configuration.isExpanded ? "Развёрнуто" : "Свёрнуто")
+            if configuration.isExpanded {
+                configuration.content.padding(.horizontal, 20).padding(.bottom, 20)
+            }
+        }
     }
 }
 

@@ -31,7 +31,7 @@ private struct SMCWireData {
          0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 }
 
-private final class SMCReader {
+final class SMCReader {
     private var connection: io_connect_t = 0
     private var info: [UInt32: SMCWireData.KeyInfo] = [:]
 
@@ -49,8 +49,12 @@ private final class SMCReader {
     private func call(_ input: inout SMCWireData) -> SMCWireData? {
         var output = SMCWireData()
         var outputSize = MemoryLayout<SMCWireData>.stride
-        // Only read-key-info, read-bytes and enumerate-key commands are exposed.
-        guard [UInt8(5), 8, 9].contains(input.command),
+        #if COOLING_HELPER
+        let commands: [UInt8] = [5, 6, 8, 9]
+        #else
+        let commands: [UInt8] = [5, 8, 9]
+        #endif
+        guard commands.contains(input.command),
               IOConnectCallStructMethod(connection, 2, &input, MemoryLayout<SMCWireData>.stride,
                                         &output, &outputSize) == kIOReturnSuccess,
               output.result == 0 else { return nil }
@@ -96,6 +100,30 @@ private final class SMCReader {
         guard let metadata = info[code], ["sp78", "flt "].contains(Self.string(metadata.dataType)) else { return nil }
         return value
     }
+
+    #if COOLING_HELPER
+    // Compiled only into the privileged cooling helper, never the GUI or VPN core.
+    func writeControl(_ key: String, value newValue: Double) throws {
+        let fanKey = key.utf8.count == 4 && key.first == "F" && key.dropFirst().first?.isNumber == true &&
+            ["md", "Md", "Tg"].contains(String(key.suffix(2)))
+        guard fanKey || key == "FS! " || key == "Ftst", value(key) != nil else {
+            throw VPNError.message("Этот ключ управления охлаждением недоступен: \(key).")
+        }
+        let code = key.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        guard let metadata = info[code],
+              let bytes = SMCValueEncoder.bytes(type: Self.string(metadata.dataType), value: newValue),
+              bytes.count == metadata.dataSize else { throw VPNError.message("Неподдерживаемый формат управления: \(key).") }
+        var input = SMCWireData()
+        input.key = code; input.command = 6; input.keyInfo.dataSize = metadata.dataSize
+        withUnsafeMutableBytes(of: &input.bytes) { $0.copyBytes(from: bytes) }
+        // Thermal firmware can temporarily refuse a write during a mode transition.
+        for attempt in 0..<20 {
+            if call(&input) != nil { return }
+            if attempt < 19 { Thread.sleep(forTimeInterval: 0.05) }
+        }
+        throw VPNError.message("macOS отклонила запись управления \(key).")
+    }
+    #endif
 
     private static func string(_ value: UInt32) -> String {
         String(bytes: [UInt8((value >> 24) & 255), UInt8((value >> 16) & 255), UInt8((value >> 8) & 255), UInt8(value & 255)], encoding: .ascii) ?? ""

@@ -18,3 +18,5 @@ The AppleSMC wire layout and read protocol are adapted from Stats by Serhiy Mytr
 https://github.com/exelban/stats
 Copyright (c) 2019 Serhiy Mytrovtsiy. Licensed under the MIT License.
 The complete notice is retained in armanVPN/Legal/Stats-LICENSE.txt and included in the application.
+
+Version 1.5 adds full-width navigation/disclosure hit areas and a dedicated signed cooling helper with System, temperature curve and manual fan modes. Fan-control protocol is also adapted from Stats under the retained MIT notice.

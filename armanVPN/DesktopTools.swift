@@ -31,6 +31,7 @@ final class DesktopTools {
     var codexLoading = false
     var health: MacHealthSnapshot?
     var healthError: String?
+    let cooling: CoolingController
     var temperatureHistory: [TemperaturePoint] = []
     var codexEnabled: Bool { didSet {
         if persist { UserDefaults.standard.set(codexEnabled, forKey: "tools.codexEnabled") }
@@ -50,6 +51,7 @@ final class DesktopTools {
     private var healthMonitor: Task<Void, Never>?
 
     init(startMonitoring: Bool = true) {
+        cooling = CoolingController(observeSleep: startMonitoring)
         persist = startMonitoring
         let defaults = UserDefaults.standard
         codexEnabled = startMonitoring ? defaults.object(forKey: "tools.codexEnabled") as? Bool ?? true : true
@@ -66,6 +68,7 @@ final class DesktopTools {
             healthMonitor = Task { [weak self] in
                 while !Task.isCancelled {
                     await self?.refreshHealth()
+                    await self?.cooling.refresh()
                     try? await Task.sleep(for: .seconds(3))
                 }
             }

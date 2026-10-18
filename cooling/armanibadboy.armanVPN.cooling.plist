@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>Label</key><string>armanibadboy.armanVPN.cooling</string>
+    <key>BundleProgram</key><string>Contents/MacOS/armanvpn-cooling-helper</string>
+    <key>ProgramArguments</key><array><string>armanvpn-cooling-helper</string></array>
+    <key>RunAtLoad</key><true/>
+    <key>KeepAlive</key><true/>
+    <key>ProcessType</key><string>Adaptive</string>
+    <key>ThrottleInterval</key><integer>3</integer>
+</dict></plist>
