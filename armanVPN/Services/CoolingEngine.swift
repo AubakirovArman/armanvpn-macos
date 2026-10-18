@@ -52,8 +52,7 @@ final class CoolingEngine: @unchecked Sendable {
                     ownsHardware = true
                     try hardware.takeControl()
                     try hardware.setTargets(targets)
-                    let verified = try hardware.sample()
-                    try verify(verified, targets: targets)
+                    _ = try confirmedSample(targets: targets)
                     status.policy = policy
                     status.controlling = true
                     status.thermalOverride = (sample.temperature ?? 0) >= 85
@@ -90,7 +89,7 @@ final class CoolingEngine: @unchecked Sendable {
             }
             if targets != expected {
                 try hardware.setTargets(targets)
-                try verify(hardware.sample(), targets: targets)
+                _ = try confirmedSample(targets: targets)
                 expected = targets
             }
             try updateSample()
@@ -110,6 +109,18 @@ final class CoolingEngine: @unchecked Sendable {
               sample.fans.allSatisfy({ $0.valid && $0.forced && abs($0.target - (targets[$0.id] ?? -1000)) <= 30 }) else {
             throw VPNError.message("SMC не подтвердил заданные обороты или другая программа изменила режим.")
         }
+    }
+
+    private func confirmedSample(targets: [Int: Double]) throws -> CoolingSample {
+        // SMC writes are asynchronous. Confirm requested targets/modes, rather
+        // than waiting for the physical rotor to reach its new speed.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        repeat {
+            let sample = try hardware.sample()
+            if (try? verify(sample, targets: targets)) != nil { return sample }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while ContinuousClock.now < deadline
+        throw VPNError.message("SMC не подтвердил режим и заданные обороты за 2 секунды.")
     }
 
     private func updateSample() throws {

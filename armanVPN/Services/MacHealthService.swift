@@ -94,6 +94,13 @@ final class SMCReader {
         return keys.sorted()
     }
 
+    func metadata(for key: String) -> (type: String, size: UInt32)? {
+        guard key.utf8.count == 4 else { return nil }
+        _ = value(key)
+        let code = key.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }
+        return info[code].map { (Self.string($0.dataType), $0.dataSize) }
+    }
+
     func temperature(_ key: String) -> Double? {
         guard let value = value(key), value > 0, value < 150 else { return nil }
         let code = key.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }

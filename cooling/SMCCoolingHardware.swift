@@ -31,6 +31,12 @@ final class SMCCoolingHardware: CoolingHardware {
         let initialFans = try sample().fans
         guard initialFans.allSatisfy(\.valid) else { throw VPNError.message("Неизвестные границы оборотов.") }
         #if arch(arm64)
+        // On M1–M4 the mode write can be acknowledged before thermalmonitord
+        // has yielded control. Enable the hardware's test flag first when present.
+        if let value = reader.value("Ftst"), value != 1 {
+            try reader.writeControl("Ftst", value: 1)
+            Thread.sleep(forTimeInterval: 3)
+        }
         for id in ids {
             do { try reader.writeControl(modeKey(id), value: 1) }
             catch {
@@ -74,6 +80,9 @@ final class SMCCoolingHardware: CoolingHardware {
         for id in ids {
             do {
                 if reader.value(modeKey(id)) == 1 { try reader.writeControl(modeKey(id), value: 0) }
+                // Apple Silicon also requires releasing the explicit target;
+                // otherwise firmware can keep the previous forced RPM active.
+                try reader.writeControl("F\(id)Tg", value: 0)
             } catch { failures.append(error.localizedDescription) }
         }
         #else
@@ -87,7 +96,19 @@ final class SMCCoolingHardware: CoolingHardware {
             catch { failures.append(error.localizedDescription) }
         }
         #endif
-        if try sample().fans.contains(where: \.forced) { failures.append("SMC не подтвердил системный режим.") }
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        var confirmed = false
+        repeat {
+            let fans = try sample().fans
+            #if arch(arm64)
+            let testReleased = reader.value("Ftst").map { $0 == 0 } ?? true
+            #else
+            let testReleased = true
+            #endif
+            if testReleased && !fans.contains(where: \.forced) { confirmed = true; break }
+            Thread.sleep(forTimeInterval: 0.05)
+        } while ContinuousClock.now < deadline
+        if !confirmed { failures.append("SMC не подтвердил системный режим за 2 секунды.") }
         guard failures.isEmpty else { throw VPNError.message(failures.joined(separator: " ")) }
     }
 

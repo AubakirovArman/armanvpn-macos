@@ -11,11 +11,21 @@ private final class FakeCoolingHardware: CoolingHardware {
     var resets = 0
     var failWrite = false
     var failReset = false
-    func sample() throws -> CoolingSample { CoolingSample(fans: fans, temperature: temperature) }
+    var delayedReadbacks = 0
+    private var remainingStaleReadbacks = 0
+    private var staleFans: [CoolingFan] = []
+    func sample() throws -> CoolingSample {
+        if remainingStaleReadbacks > 0 {
+            remainingStaleReadbacks -= 1
+            return CoolingSample(fans: staleFans, temperature: temperature)
+        }
+        return CoolingSample(fans: fans, temperature: temperature)
+    }
     func takeControl() throws {
         fans = fans.map { .init(id: $0.id, minimum: $0.minimum, maximum: $0.maximum, actual: $0.actual, target: $0.target, forced: true) }
     }
     func setTargets(_ targets: [Int: Double]) throws {
+        staleFans = fans; remainingStaleReadbacks = delayedReadbacks
         for index in fans.indices {
             let fan = fans[index]
             fans[index] = .init(id: fan.id, minimum: fan.minimum, maximum: fan.maximum, actual: fan.actual, target: targets[fan.id]!, forced: fan.forced)
@@ -25,10 +35,33 @@ private final class FakeCoolingHardware: CoolingHardware {
     func restoreSystem() throws {
         resets += 1
         if failReset { throw VPNError.message("Simulated reset failure") }
+        remainingStaleReadbacks = 0
         fans = fans.map { .init(id: $0.id, minimum: $0.minimum, maximum: $0.maximum, actual: $0.actual, target: 0, forced: false) }
     }
     func markOwnership() throws { marker = true }
     func clearOwnership() throws { marker = false }
+}
+
+@Test func coolingWaitsForAsynchronousSMCAcknowledgement() throws {
+    let hardware = FakeCoolingHardware(), owner = UUID()
+    hardware.delayedReadbacks = 3
+    let engine = CoolingEngine(hardware: hardware)
+    let status = try engine.handle(manualRequest(owner: owner), now: 0)
+    #expect(status.controlling)
+    #expect(status.fans.allSatisfy { $0.forced && $0.target >= 2000 })
+    #expect(hardware.resets == 0)
+    try engine.shutdown()
+}
+
+@Test func coolingUnconfirmedWriteHasBoundedWaitAndReturnsToSystem() throws {
+    let hardware = FakeCoolingHardware(), owner = UUID()
+    hardware.delayedReadbacks = .max
+    let engine = CoolingEngine(hardware: hardware)
+    let started = ContinuousClock.now
+    #expect(throws: VPNError.self) { try engine.handle(manualRequest(owner: owner), now: 0) }
+    #expect(started.duration(to: .now) < .seconds(4))
+    #expect(!hardware.marker)
+    #expect(hardware.fans.allSatisfy { !$0.forced })
 }
 
 private func manualRequest(owner: UUID) -> CoolingRequest {

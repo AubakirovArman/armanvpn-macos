@@ -20,3 +20,5 @@ Copyright (c) 2019 Serhiy Mytrovtsiy. Licensed under the MIT License.
 The complete notice is retained in armanVPN/Legal/Stats-LICENSE.txt and included in the application.
 
 Version 1.5 adds full-width navigation/disclosure hit areas and a dedicated signed cooling helper with System, temperature curve and manual fan modes. Fan-control protocol is also adapted from Stats under the retained MIT notice.
+
+Version 1.5.1 waits for asynchronous SMC acknowledgements and releases both fan mode and target RPM when returning to system control.
