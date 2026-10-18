@@ -35,16 +35,25 @@ struct MenuBarPanel: View {
                             Label("CODEX", systemImage: "sparkles").font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(ArmanBrand.cyan)
                             Text(tools.menuQuota).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit()
                             Text("остаток лимита").font(.system(size: 9)).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(12).contentShape(Rectangle())
                     }
                     Button { tools.section = .mac; showMainWindow() } label: {
                         VStack(alignment: .leading, spacing: 5) {
                             Label("МОЙ MAC", systemImage: "thermometer.medium").font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(ArmanBrand.gold)
                             Text(tools.menuTemperature).font(.system(size: 26, weight: .semibold, design: .rounded)).monospacedDigit()
-                            Text("температура").font(.system(size: 9)).foregroundStyle(.secondary)
-                        }.frame(maxWidth: .infinity, alignment: .leading).padding(12)
+                            Text("средняя CPU/GPU").font(.system(size: 9)).foregroundStyle(.secondary)
+                        }.frame(maxWidth: .infinity, alignment: .leading).padding(12).contentShape(Rectangle())
                     }
                 }.buttonStyle(.plain).background(ArmanBrand.panel, in: RoundedRectangle(cornerRadius: 12))
+                Button { tools.section = .mac; showMainWindow() } label: {
+                    HStack {
+                        Label("ВЕНТИЛЯТОРЫ · RPM", systemImage: "fanblades")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced)).foregroundStyle(ArmanBrand.gold)
+                        Spacer()
+                        Text(tools.menuFans).font(.system(size: 14, weight: .medium, design: .rounded)).monospacedDigit()
+                    }.padding(12).contentShape(Rectangle())
+                }.buttonStyle(.plain).background(ArmanBrand.panel, in: RoundedRectangle(cornerRadius: 12))
+                    .help(tools.fanDescription)
                 if let error = vpn.error {
                     Text(error).font(.caption).foregroundStyle(.orange).lineLimit(3)
                 }

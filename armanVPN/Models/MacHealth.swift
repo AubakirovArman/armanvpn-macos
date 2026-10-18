@@ -22,6 +22,10 @@ struct FanReading: Identifiable, Sendable {
     let minimum: Double?
     let maximum: Double?
     let mode: Int?
+    var rpmValueText: String {
+        guard let rpm, rpm.isFinite, (0...25_000).contains(rpm) else { return "—" }
+        return "\(Int(rpm.rounded()))"
+    }
     var modeLabel: String {
         switch mode {
         case 0, 3: "Автоматически"
@@ -39,6 +43,18 @@ struct MacHealthSnapshot: Sendable {
     var cpuTemperature: Double? { temperatures.filter { $0.group == "CPU" }.map(\.celsius).max() }
     var gpuTemperature: Double? { temperatures.filter { $0.group == "GPU" }.map(\.celsius).max() }
     var highestTemperature: Double? { temperatures.map(\.celsius).max() }
+    var averageProcessorTemperature: Double? {
+        let values = temperatures.filter { ["CPU", "GPU"].contains($0.group) && $0.celsius.isFinite && $0.celsius > 0 && $0.celsius < 150 }.map(\.celsius)
+        return values.isEmpty ? nil : values.reduce(0, +) / Double(values.count)
+    }
+    var menuFanSpeedText: String {
+        if fanCount == 0 { return "нет" }
+        let ordered = fans.sorted { $0.id < $1.id }
+        guard !ordered.isEmpty else { return "—" }
+        if ordered.count <= 2 { return ordered.map(\.rpmValueText).joined(separator: "/") }
+        let maximum = ordered.compactMap(\.rpm).filter { $0.isFinite && (0...25_000).contains($0) }.max()
+        return maximum.map { "\(Int($0.rounded())) max" } ?? "—"
+    }
 }
 
 enum SMCValueDecoder {

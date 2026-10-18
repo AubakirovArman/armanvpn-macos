@@ -43,6 +43,7 @@ final class DesktopTools {
     } }
     var showCodexInMenu: Bool { didSet { if persist { UserDefaults.standard.set(showCodexInMenu, forKey: "tools.menuCodex") } } }
     var showTemperatureInMenu: Bool { didSet { if persist { UserDefaults.standard.set(showTemperatureInMenu, forKey: "tools.menuTemperature") } } }
+    var showFansInMenu: Bool { didSet { if persist { UserDefaults.standard.set(showFansInMenu, forKey: "tools.menuFans") } } }
 
     private let persist: Bool
     private let hardware = MacHealthService()
@@ -58,6 +59,7 @@ final class DesktopTools {
         healthEnabled = startMonitoring ? defaults.object(forKey: "tools.healthEnabled") as? Bool ?? true : true
         showCodexInMenu = startMonitoring ? defaults.object(forKey: "tools.menuCodex") as? Bool ?? true : true
         showTemperatureInMenu = startMonitoring ? defaults.object(forKey: "tools.menuTemperature") as? Bool ?? true : true
+        showFansInMenu = startMonitoring ? defaults.object(forKey: "tools.menuFans") as? Bool ?? true : true
         if startMonitoring {
             codexMonitor = Task { [weak self] in
                 while !Task.isCancelled {
@@ -88,8 +90,21 @@ final class DesktopTools {
     var menuQuota: String { codexIsFresh ? codex?.menuWindow?.percentage ?? "—" : "—" }
     var temperatureLabel: String { health?.cpuTemperature == nil ? "Максимум датчиков" : "CPU" }
     var menuTemperature: String {
-        guard temperatureIsFresh, let value = health?.cpuTemperature ?? health?.highestTemperature else { return "—" }
+        guard temperatureIsFresh, let value = health?.averageProcessorTemperature else { return "—" }
         return "\(Int(value.rounded()))°"
+    }
+    var menuFans: String { temperatureIsFresh ? health?.menuFanSpeedText ?? "—" : "—" }
+    var fanDescription: String {
+        guard temperatureIsFresh, let health else { return "Нет свежих данных о вентиляторах" }
+        if health.fanCount == 0 { return "У этого Mac нет вентиляторов" }
+        return health.fans.sorted { $0.id < $1.id }.map { "Вентилятор \($0.id + 1): \($0.rpmValueText) RPM" }.joined(separator: "; ")
+    }
+    var menuDescription: String {
+        var parts = ["armanVPN"]
+        if showCodexInMenu { parts.append("Codex: осталось \(menuQuota)") }
+        if showTemperatureInMenu { parts.append("Средняя CPU/GPU: \(menuTemperature)") }
+        if showFansInMenu { parts.append(fanDescription) }
+        return parts.joined(separator: " · ")
     }
 
     func refreshCodex() async {

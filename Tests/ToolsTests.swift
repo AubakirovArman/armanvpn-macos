@@ -43,6 +43,32 @@ import Testing
     #expect(FanReading(id: 0, rpm: 0, minimum: 0, maximum: 5000, mode: 1).modeLabel == "Внешнее управление")
 }
 
+@Test func menuTemperatureAveragesOnlyValidCPUAndGPUSensors() {
+    let snapshot = MacHealthSnapshot(temperatures: [.init(id: "TC0P", celsius: 50), .init(id: "TC0D", celsius: 70),
+        .init(id: "TG0P", celsius: 60), .init(id: "TB0T", celsius: 25), .init(id: "TW0P", celsius: 95),
+        .init(id: "TC1P", celsius: .nan), .init(id: "TG1P", celsius: 0)], fans: [], fanCount: 0, sampledAt: Date())
+    #expect(snapshot.averageProcessorTemperature == 60)
+    let unavailable = MacHealthSnapshot(temperatures: [.init(id: "TB0T", celsius: 25)], fans: [], fanCount: 0, sampledAt: Date())
+    #expect(unavailable.averageProcessorTemperature == nil)
+}
+
+@Test func menuFanValuesPreserveStoppedMissingAndIndependentReadings() {
+    let snapshot = MacHealthSnapshot(temperatures: [], fans: [.init(id: 1, rpm: 1850.3, minimum: 0, maximum: 5500, mode: 0),
+        .init(id: 0, rpm: 0, minimum: 0, maximum: 5000, mode: 0)], fanCount: 2, sampledAt: Date())
+    #expect(snapshot.menuFanSpeedText == "0/1850")
+    #expect(FanReading(id: 0, rpm: .nan, minimum: 0, maximum: 5000, mode: 0).rpmValueText == "—")
+    #expect(FanReading(id: 0, rpm: nil, minimum: 0, maximum: 5000, mode: 0).rpmValueText == "—")
+    #expect(MacHealthSnapshot(temperatures: [], fans: [], fanCount: nil, sampledAt: Date()).menuFanSpeedText == "—")
+    #expect(MacHealthSnapshot(temperatures: [], fans: [], fanCount: 0, sampledAt: Date()).menuFanSpeedText == "нет")
+}
+
+@Test func manyFanMenuUsesMaximumWhileKeepingFullReadingsAvailable() {
+    let fans = [0, 1, 2].map { FanReading(id: $0, rpm: Double(1800 + $0 * 200), minimum: 0, maximum: 5500, mode: 0) }
+    let snapshot = MacHealthSnapshot(temperatures: [], fans: fans, fanCount: 3, sampledAt: Date())
+    #expect(snapshot.menuFanSpeedText == "2200 max")
+    #expect(snapshot.fans.count == 3)
+}
+
 @Test func codexIntegrationInitializesBeforeReadingLimitsAndNeverStartsATurn() throws {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)

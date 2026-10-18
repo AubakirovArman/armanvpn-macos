@@ -38,7 +38,7 @@ struct HubOverview: View {
                     HubEyebrow(title: "МОЙ MAC", symbol: "thermometer.medium", color: ArmanBrand.gold)
                     HStack(alignment: .firstTextBaseline, spacing: 7) {
                         Text(tools.menuTemperature).font(.system(size: 45, weight: .semibold, design: .rounded)).monospacedDigit()
-                        Text(tools.temperatureLabel).font(.caption).foregroundStyle(.secondary)
+                        Text("CPU/GPU · средняя").font(.caption).foregroundStyle(.secondary)
                     }
                     Text(fanSummary).font(.callout)
                     Text("Температуры и вентиляторы — прямо здесь.")
@@ -180,7 +180,10 @@ struct MacHealthView: View {
                 Toggle("Читать датчики Mac", isOn: $tools.healthEnabled)
                     .onChange(of: tools.healthEnabled) { _, enabled in if enabled { Task { await tools.refreshHealth() } } }
                 Toggle("Показывать температуру в строке меню", isOn: $tools.showTemperatureInMenu)
+                Toggle("Показывать обороты в строке меню", isOn: $tools.showFansInMenu)
                 Text("Обновление каждые 3 секунды. CPU и GPU — максимальные значения доступных датчиков соответствующей группы.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Text("В строке меню — средняя температура по датчикам CPU/GPU и фактические RPM вентиляторов. Два значения RPM идут по порядку: вентилятор 1 / 2.")
                     .font(.caption).foregroundStyle(.secondary)
                 if let date = tools.health?.sampledAt {
                     Text("Последнее измерение: \(date.formatted(date: .omitted, time: .standard))")
@@ -281,12 +284,11 @@ struct SuperAppMenuLabel: View {
     let connected: Bool
     @Bindable var tools: DesktopTools
     var body: some View {
-        HStack(spacing: 7) {
-            Image(systemName: connected ? "lock.shield.fill" : "lock.shield")
-            if tools.showCodexInMenu { Text("C \(tools.menuQuota)").monospacedDigit() }
-            if tools.showTemperatureInMenu { Text(tools.menuTemperature).monospacedDigit() }
-        }.font(.system(size: 11, weight: .medium))
-            .accessibilityLabel("armanVPN, Codex осталось \(tools.menuQuota), температура \(tools.menuTemperature)")
-            .help("Codex: осталось \(tools.menuQuota) · \(tools.temperatureLabel): \(tools.menuTemperature)")
+        Image(nsImage: MenuBarStatusImage.make(connected: connected,
+              quota: tools.showCodexInMenu ? tools.menuQuota : nil,
+              temperature: tools.showTemperatureInMenu ? tools.menuTemperature : nil,
+              fans: tools.showFansInMenu ? tools.menuFans : nil))
+            .accessibilityLabel(tools.menuDescription)
+            .help(tools.menuDescription)
     }
 }
