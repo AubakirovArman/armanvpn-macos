@@ -13,5 +13,5 @@ Local modifications are provided in armanvpn.patch:
 - Disable HTTP redirects and verify the SSL tunnel's peer certificate before sending tunnel data.
 
 Build: bash scripts/build-engine.sh
-This script fetches the exact upstream source, applies the supplied patch and builds the engine.
+This script fetches the exact upstream source, applies the supplied patch and builds the engine for aarch64-apple-darwin (Apple Silicon only).
 The Swift application communicates with this separate executable through a local Unix socket.

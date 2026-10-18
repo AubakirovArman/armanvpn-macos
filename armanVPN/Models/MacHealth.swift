@@ -1,15 +1,15 @@
 import Foundation
 
+#if !arch(arm64)
+#error("armanVPN supports Apple Silicon (arm64) only.")
+#endif
+
 struct TemperatureReading: Identifiable, Sendable {
     let id: String
     let celsius: Double
     var group: String {
-        if id == "TCGC" { return "GPU" }
-        if id.hasPrefix("TC") { return "CPU" }
-        #if arch(arm64)
         if id.hasPrefix("Tp") || id.hasPrefix("Te") || id.hasPrefix("Tf0") || id.hasPrefix("Tf4") { return "CPU" }
         if id.hasPrefix("Tf1") || id.hasPrefix("Tf2") { return "GPU" }
-        #endif
         if id.hasPrefix("Tg") || id.hasPrefix("TG") { return "GPU" }
         if id.hasPrefix("TB") || id.hasPrefix("Tb") { return "Батарея" }
         return "Другие"

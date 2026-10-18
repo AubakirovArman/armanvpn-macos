@@ -1,11 +1,12 @@
 #!/bin/bash
 set -euo pipefail
 app_contents="$TARGET_BUILD_DIR/$CONTENTS_FOLDER_PATH"
-engine_binary="${ARMANVPN_ENGINE_BINARY:-$SRCROOT/.build/engine/armanvpn-engine}"
+engine_binary="${ARMANVPN_ENGINE_BINARY:-$SRCROOT/.build/engine/armanvpn-engine-arm64}"
 if [ ! -x "$engine_binary" ]; then
-    printf 'warning: VPN engine not built. Run bash scripts/build-engine.sh to enable connections.\n'
-    exit 0
+    printf 'error: Apple Silicon VPN engine not built. Run bash scripts/build-engine.sh first.\n' >&2
+    exit 1
 fi
+bash "$SRCROOT/scripts/verify-arm64.sh" "$engine_binary"
 mkdir -p "$app_contents/MacOS" "$app_contents/Library/LaunchDaemons"
 install -m 755 "$engine_binary" "$app_contents/MacOS/armanvpn-engine"
 install -m 644 "$SRCROOT/engine/armanibadboy.armanVPN.engine.plist" "$app_contents/Library/LaunchDaemons/"

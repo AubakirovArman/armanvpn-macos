@@ -12,7 +12,7 @@ enum PreviewExporter {
         let tools = DesktopTools(startMonitoring: false)
         tools.codex = try JSONDecoder().decode(CodexUsageSnapshot.self, from: Data(#"{"rateLimits":{"limitId":"codex","primary":{"usedPercent":3,"windowDurationMins":10080,"resetsAt":1792887912},"secondary":null}}"#.utf8))
         tools.codexUpdatedAt = Date()
-        tools.health = MacHealthSnapshot(temperatures: [.init(id: "TC0P", celsius: 52), .init(id: "Tg0P", celsius: 45)],
+        tools.health = MacHealthSnapshot(temperatures: [.init(id: "Tp01", celsius: 52), .init(id: "Tf14", celsius: 45)],
                                         fans: [.init(id: 0, rpm: 1850, minimum: 0, maximum: 5700, mode: 0), .init(id: 1, rpm: 1800, minimum: 0, maximum: 5200, mode: 0)],
                                         fanCount: 2, sampledAt: Date())
         tools.temperatureHistory = (0..<60).map { index in

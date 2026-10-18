@@ -113,7 +113,7 @@ final class SMCReader {
     func writeControl(_ key: String, value newValue: Double) throws {
         let fanKey = key.utf8.count == 4 && key.first == "F" && key.dropFirst().first?.isNumber == true &&
             ["md", "Md", "Tg"].contains(String(key.suffix(2)))
-        guard fanKey || key == "FS! " || key == "Ftst", value(key) != nil else {
+        guard fanKey || key == "Ftst", value(key) != nil else {
             throw VPNError.message("Этот ключ управления охлаждением недоступен: \(key).")
         }
         let code = key.utf8.reduce(UInt32(0)) { ($0 << 8) | UInt32($1) }

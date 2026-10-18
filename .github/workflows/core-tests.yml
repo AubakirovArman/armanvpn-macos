@@ -6,8 +6,13 @@ permissions:
   contents: read
 jobs:
   swift-tests:
+    # Standard macos-15 runners use Apple Silicon.
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - name: Test protocol and profile core
+      - name: Require Apple Silicon
+        run: test "$(uname -m)" = arm64
+      - name: Check build scripts
+        run: for script in scripts/*.sh; do bash -n "$script"; done
+      - name: Test protocol, monitoring and cooling core
         run: swift test

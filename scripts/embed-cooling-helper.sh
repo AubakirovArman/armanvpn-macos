@@ -8,14 +8,10 @@ sources=("$SRCROOT/cooling/main.swift" "$SRCROOT/cooling/SMCCoolingHardware.swif
     "$SRCROOT/armanVPN/Models/Cooling.swift" "$SRCROOT/armanVPN/Services/MacHealthService.swift"
     "$SRCROOT/armanVPN/Services/CoolingIPC.swift" "$SRCROOT/armanVPN/Services/CoolingEngine.swift"
     "$SRCROOT/armanVPN/Services/AutomaticCooling.swift")
-outputs=()
-for architecture in $ARCHS; do
-    output="$DERIVED_FILE_DIR/cooling/helper-$architecture"
-    xcrun swiftc -O -swift-version 5 -D COOLING_HELPER -sdk "$sdk_path" \
-        -target "$architecture-apple-macos14.0" -framework IOKit -framework Security "${sources[@]}" -o "$output"
-    outputs+=("$output")
-done
-xcrun lipo -create "${outputs[@]}" -output "$app_contents/MacOS/armanvpn-cooling-helper"
+xcrun swiftc -O -swift-version 5 -D COOLING_HELPER -sdk "$sdk_path" \
+    -target arm64-apple-macos14.0 -framework IOKit -framework Security "${sources[@]}" \
+    -o "$app_contents/MacOS/armanvpn-cooling-helper"
+bash "$SRCROOT/scripts/verify-arm64.sh" "$app_contents/MacOS/armanvpn-cooling-helper"
 chmod 755 "$app_contents/MacOS/armanvpn-cooling-helper"
 install -m 644 "$SRCROOT/cooling/armanibadboy.armanVPN.cooling.plist" "$app_contents/Library/LaunchDaemons/"
 if [ -n "${EXPANDED_CODE_SIGN_IDENTITY:-}" ]; then

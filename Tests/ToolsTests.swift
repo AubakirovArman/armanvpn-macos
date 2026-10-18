@@ -35,8 +35,8 @@ import Testing
 }
 
 @Test func sensorGroupsAndExternalFanModesAreExplicit() {
-    let snapshot = MacHealthSnapshot(temperatures: [.init(id: "TC0P", celsius: 50), .init(id: "TC0D", celsius: 55),
-                                                  .init(id: "Tg0P", celsius: 45), .init(id: "TB0T", celsius: 34)],
+    let snapshot = MacHealthSnapshot(temperatures: [.init(id: "Tp01", celsius: 50), .init(id: "Te05", celsius: 55),
+                                                  .init(id: "Tf14", celsius: 45), .init(id: "TB0T", celsius: 34)],
                                     fans: [], fanCount: 0, sampledAt: Date())
     #expect(snapshot.cpuTemperature == 55)
     #expect(snapshot.gpuTemperature == 45)
@@ -44,9 +44,9 @@ import Testing
 }
 
 @Test func menuTemperatureAveragesOnlyValidCPUAndGPUSensors() {
-    let snapshot = MacHealthSnapshot(temperatures: [.init(id: "TC0P", celsius: 50), .init(id: "TC0D", celsius: 70),
-        .init(id: "TG0P", celsius: 60), .init(id: "TB0T", celsius: 25), .init(id: "TW0P", celsius: 95),
-        .init(id: "TC1P", celsius: .nan), .init(id: "TG1P", celsius: 0)], fans: [], fanCount: 0, sampledAt: Date())
+    let snapshot = MacHealthSnapshot(temperatures: [.init(id: "Tp01", celsius: 50), .init(id: "Te05", celsius: 70),
+        .init(id: "Tf14", celsius: 60), .init(id: "TB0T", celsius: 25), .init(id: "TW0P", celsius: 95),
+        .init(id: "Tp02", celsius: .nan), .init(id: "Tf15", celsius: 0)], fans: [], fanCount: 0, sampledAt: Date())
     #expect(snapshot.averageProcessorTemperature == 60)
     let unavailable = MacHealthSnapshot(temperatures: [.init(id: "TB0T", celsius: 25)], fans: [], fanCount: 0, sampledAt: Date())
     #expect(unavailable.averageProcessorTemperature == nil)

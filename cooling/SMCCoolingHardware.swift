@@ -37,7 +37,6 @@ final class SMCCoolingHardware: CoolingHardware {
         let ids = try fanIDs()
         let initialFans = try sample().fans
         guard initialFans.allSatisfy(\.valid) else { throw VPNError.message("Неизвестные границы оборотов.") }
-        #if arch(arm64)
         // On M1–M4 the mode write can be acknowledged before thermalmonitord
         // has yielded control. Enable the hardware's test flag first when present.
         if let value = reader.value("Ftst"), value != 1 {
@@ -56,14 +55,6 @@ final class SMCCoolingHardware: CoolingHardware {
                 try reader.writeControl("F\(id)Tg", value: min(fan.maximum, max(fan.actual, max(fan.controlMinimum, 2000))))
             }
         }
-        #else
-        var mask = Int(reader.value("FS! ") ?? 0)
-        for id in ids {
-            if reader.value(modeKey(id)) != nil { try reader.writeControl(modeKey(id), value: 1) }
-            mask |= 1 << id
-        }
-        try reader.writeControl("FS! ", value: Double(mask))
-        #endif
     }
 
     func setTargets(_ targets: [Int: Double]) throws {
@@ -79,7 +70,6 @@ final class SMCCoolingHardware: CoolingHardware {
     func restoreSystem() throws {
         let ids = try fanIDs()
         var failures: [String] = []
-        #if arch(arm64)
         if let value = reader.value("Ftst"), value != 0 {
             do { try reader.writeControl("Ftst", value: 0) }
             catch { failures.append(error.localizedDescription) }
@@ -92,26 +82,11 @@ final class SMCCoolingHardware: CoolingHardware {
                 try reader.writeControl("F\(id)Tg", value: 0)
             } catch { failures.append(error.localizedDescription) }
         }
-        #else
-        if let value = reader.value("FS! ") {
-            let bits = ids.reduce(0) { $0 | (1 << $1) }
-            do { try reader.writeControl("FS! ", value: Double(Int(value) & ~bits)) }
-            catch { failures.append(error.localizedDescription) }
-        }
-        for id in ids where reader.value(modeKey(id)) != nil {
-            do { try reader.writeControl(modeKey(id), value: 0) }
-            catch { failures.append(error.localizedDescription) }
-        }
-        #endif
         let deadline = ContinuousClock.now.advanced(by: .seconds(2))
         var confirmed = false
         repeat {
             let fans = try sample().fans
-            #if arch(arm64)
             let testReleased = reader.value("Ftst").map { $0 == 0 } ?? true
-            #else
-            let testReleased = true
-            #endif
             if testReleased && !fans.contains(where: \.forced) { confirmed = true; break }
             Thread.sleep(forTimeInterval: 0.05)
         } while ContinuousClock.now < deadline

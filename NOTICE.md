@@ -26,3 +26,5 @@ Version 1.5.1 waits for asynchronous SMC acknowledgements and releases both fan 
 Version 1.6 adds template-image menu bar indicators for Codex quotas, average CPU/GPU temperature and fan RPM, with independent visibility settings.
 
 Version 1.7 adds a time-aware fan curve, smoothing, temperature hysteresis, asymmetric slew limits, system thermal-pressure fallback and visible control decisions. The 85/80-degree safety latch remains independent of filtering.
+
+Version 1.8 targets Apple Silicon only: Intel fan-control branches and universal engine builds are removed; every shipped executable is verified as arm64-only.
