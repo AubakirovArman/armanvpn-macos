@@ -32,6 +32,7 @@ final class DesktopTools {
     var health: MacHealthSnapshot?
     var healthError: String?
     let cooling: CoolingController
+    let audioBalance: AudioBalanceController
     var temperatureHistory: [TemperaturePoint] = []
     var codexEnabled: Bool { didSet {
         if persist { UserDefaults.standard.set(codexEnabled, forKey: "tools.codexEnabled") }
@@ -53,6 +54,7 @@ final class DesktopTools {
 
     init(startMonitoring: Bool = true) {
         cooling = CoolingController(observeSleep: startMonitoring)
+        audioBalance = AudioBalanceController(startMonitoring: startMonitoring)
         persist = startMonitoring
         let defaults = UserDefaults.standard
         codexEnabled = startMonitoring ? defaults.object(forKey: "tools.codexEnabled") as? Bool ?? true : true

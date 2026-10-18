@@ -28,3 +28,5 @@ Version 1.6 adds template-image menu bar indicators for Codex quotas, average CP
 Version 1.7 adds a time-aware fan curve, smoothing, temperature hysteresis, asymmetric slew limits, system thermal-pressure fallback and visible control decisions. The 85/80-degree safety latch remains independent of filtering.
 
 Version 1.8 targets Apple Silicon only: Intel fan-control branches and universal engine builds are removed; every shipped executable is verified as arm64-only.
+
+Version 1.9 adds an opt-in stereo balance lock using public Core Audio properties, with route monitoring, readback verification and immediate release when disabled. No audio capture or driver is used.

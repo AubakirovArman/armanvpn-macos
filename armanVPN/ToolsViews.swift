@@ -134,11 +134,46 @@ struct CodexUsageView: View {
     }
 }
 
+struct AudioBalanceCard: View {
+    @Bindable var audio: AudioBalanceController
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                HubEyebrow(title: "ЗВУК · СТЕРЕОБАЛАНС", symbol: "headphones", color: ArmanBrand.cyan)
+                Spacer()
+                Image(systemName: audio.lock.state == .centered ? "lock.fill" : "lock.open")
+                    .foregroundStyle(audio.lock.state == .centered ? ArmanBrand.cyan : .secondary)
+            }
+            Toggle("Держать баланс по центру", isOn: $audio.enabled)
+                .toggleStyle(.checkbox).font(.callout.weight(.medium))
+            HStack(alignment: .top, spacing: 10) {
+                Text("L = R").font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .padding(8).background(ArmanBrand.cyan.opacity(0.10), in: RoundedRectangle(cornerRadius: 8))
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(audio.status).font(.callout)
+                    if audio.enabled, let device = audio.lock.output {
+                        Text(device.name).font(.caption).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 0)
+            }
+            Text(audio.lock.state == .unsupported
+                 ? "Устройство не предоставляет macOS регулятор баланса. При переключении на совместимые наушники или динамики фиксация заработает автоматически."
+                 : "Стерео остаётся стерео. При смене наушников баланс выровняется автоматически. Снимите галочку, чтобы настраивать его свободно.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            Text("Работает, пока armanVPN запущен, в том числе со скрытым окном.")
+                .font(.caption).foregroundStyle(.secondary)
+        }.padding(20).hubCard(tint: ArmanBrand.cyan)
+    }
+}
+
 struct MacHealthView: View {
     @Bindable var tools: DesktopTools
 
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
+            AudioBalanceCard(audio: tools.audioBalance)
             HStack(spacing: 16) {
                 temperatureTile("CPU · максимум", value: tools.health?.cpuTemperature, symbol: "cpu")
                 temperatureTile("GPU · максимум", value: tools.health?.gpuTemperature, symbol: "square.3.layers.3d")
