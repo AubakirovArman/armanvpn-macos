@@ -24,3 +24,5 @@ Version 1.5 adds full-width navigation/disclosure hit areas and a dedicated sign
 Version 1.5.1 waits for asynchronous SMC acknowledgements and releases both fan mode and target RPM when returning to system control.
 
 Version 1.6 adds template-image menu bar indicators for Codex quotas, average CPU/GPU temperature and fan RPM, with independent visibility settings.
+
+Version 1.7 adds a time-aware fan curve, smoothing, temperature hysteresis, asymmetric slew limits, system thermal-pressure fallback and visible control decisions. The 85/80-degree safety latch remains independent of filtering.

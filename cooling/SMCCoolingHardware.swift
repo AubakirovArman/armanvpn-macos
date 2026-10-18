@@ -23,7 +23,14 @@ final class SMCCoolingHardware: CoolingHardware {
                   let mode = reader.value(modeKey(id)) else { throw VPNError.message("Не удалось прочитать вентилятор \(id + 1).") }
             return CoolingFan(id: id, minimum: minimum, maximum: maximum, actual: actual, target: target, forced: mode == 1)
         }
-        return CoolingSample(fans: fans, temperature: temperatureKeys.compactMap { reader.temperature($0) }.max())
+        let pressure: Bool
+        switch ProcessInfo.processInfo.thermalState {
+        case .nominal, .fair: pressure = false
+        case .serious, .critical: pressure = true
+        @unknown default: pressure = true
+        }
+        return CoolingSample(fans: fans, temperature: temperatureKeys.compactMap { reader.temperature($0) }.max(),
+                             systemThermalPressure: pressure)
     }
 
     func takeControl() throws {

@@ -15,6 +15,7 @@ struct CoolingControlsView: View {
                 ForEach(CoolingMode.allCases) { Text($0.title).tag($0) }
             }.pickerStyle(.segmented)
             Text(cooling.selectedMode.explanation).font(.callout).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
 
             if cooling.selectedMode == .automatic {
                 VStack(alignment: .leading, spacing: 14) {
@@ -22,9 +23,27 @@ struct CoolingControlsView: View {
                     Slider(value: $cooling.startTemperature, in: 40...min(70, cooling.fullTemperature - 10), step: 1)
                     HStack { Text("Максимальные обороты"); Spacer(); Text("\(Int(cooling.fullTemperature)) °C").monospacedDigit() }.font(.caption)
                     Slider(value: $cooling.fullTemperature, in: max(75, cooling.startTemperature + 10)...85, step: 1)
-                    Text("Плавная кривая от 30% до 100%. При остывании обороты снижаются постепенно.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    Text("Начинаем с минимальных оборотов вентилятора. Короткие пики сглаживаются; разгон быстрее замедления. На верхнем пороге сразу включается максимум.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
+            }
+            if let status = cooling.status, status.controlling, status.policy.mode == .automatic {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(spacing: 24) {
+                        temperatureMetric("Самый горячий датчик", value: status.temperature)
+                        temperatureMetric("После сглаживания", value: status.filteredTemperature)
+                        temperatureMetric("Для расчёта оборотов", value: status.controlTemperature)
+                    }
+                    if let reason = status.automaticReason {
+                        Label(reason, systemImage: "waveform.path").font(.caption).foregroundStyle(ArmanBrand.gold)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(status.fans.sorted { $0.id < $1.id }.map { "Вентилятор \($0.id + 1): цель \(Int($0.target)) RPM" }.joined(separator: " · "))
+                        .font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                    Text("В строке меню — средняя CPU/GPU. Здесь — максимум CPU/GPU и его сглаженное значение; разница до 1 °C удерживает обороты от мелких колебаний.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }.padding(14).frame(maxWidth: .infinity, alignment: .leading)
+                    .background(.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
             }
             if cooling.selectedMode == .manual {
                 ForEach(fans) { fan in
@@ -74,9 +93,17 @@ struct CoolingControlsView: View {
                 Button("Разрешить службу охлаждения…", systemImage: "lock.open") { cooling.registerService() }
             }
             Divider()
-            Text("Изменения применяются кнопкой. При 85 °C включается максимум; при потере связи на 15 секунд управление возвращается macOS. Завершите TG Pro и другие программы управления вентиляторами перед включением нашего режима.")
-                .font(.caption).foregroundStyle(.secondary)
+            Text("Изменения применяются кнопкой. При 85 °C включается максимум. При сильном тепловом давлении macOS, сбое датчиков или потере связи на 15 секунд управление возвращается системе. Завершите TG Pro и другие программы управления вентиляторами перед включением нашего режима.")
+                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }.padding(20).background(ArmanBrand.panel, in: RoundedRectangle(cornerRadius: 18))
             .overlay(RoundedRectangle(cornerRadius: 18).stroke(ArmanBrand.gold.opacity(0.15)))
+    }
+
+    private func temperatureMetric(_ title: String, value: Double?) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.caption2).foregroundStyle(.secondary)
+            Text(value.map { String(format: "%.1f °C", $0) } ?? "—")
+                .font(.callout.weight(.semibold)).monospacedDigit()
+        }
     }
 }

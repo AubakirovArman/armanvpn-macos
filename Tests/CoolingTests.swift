@@ -5,6 +5,7 @@ import Testing
 
 private final class FakeCoolingHardware: CoolingHardware {
     var temperature: Double? = 60
+    var systemThermalPressure = false
     var fans = [CoolingFan(id: 0, minimum: 0, maximum: 5000, actual: 1800, target: 0, forced: false),
                 CoolingFan(id: 1, minimum: 0, maximum: 5500, actual: 1800, target: 0, forced: false)]
     var marker = false
@@ -19,7 +20,7 @@ private final class FakeCoolingHardware: CoolingHardware {
             remainingStaleReadbacks -= 1
             return CoolingSample(fans: staleFans, temperature: temperature)
         }
-        return CoolingSample(fans: fans, temperature: temperature)
+        return CoolingSample(fans: fans, temperature: temperature, systemThermalPressure: systemThermalPressure)
     }
     func takeControl() throws {
         fans = fans.map { .init(id: $0.id, minimum: $0.minimum, maximum: $0.maximum, actual: $0.actual, target: $0.target, forced: true) }
@@ -164,8 +165,8 @@ private func manualRequest(owner: UUID) -> CoolingRequest {
     var sample = try hardware.sample()
     let automatic = CoolingPolicy(mode: .automatic)
     let targets = try CoolingMath.targets(policy: automatic, sample: sample, override: false)
-    #expect(targets[0] == 1667)
-    #expect(targets[1] == 1833)
+    #expect(targets[0] == 1622)
+    #expect(targets[1] == 1678)
     let incomplete = CoolingPolicy(mode: .manual, targets: [0: 2000])
     #expect(throws: VPNError.self) { try CoolingMath.targets(policy: incomplete, sample: sample, override: false) }
     let tooSlow = CoolingPolicy(mode: .manual, targets: [0: 0, 1: 0])
@@ -174,6 +175,40 @@ private func manualRequest(owner: UUID) -> CoolingRequest {
     #expect(throws: VPNError.self) { try CoolingMath.targets(policy: automatic, sample: sample, override: false) }
     #expect(throws: VPNError.self) { try CoolingPolicy(mode: .automatic, startTemperature: .nan).validate() }
     #expect(throws: VPNError.self) { try CoolingPolicy(mode: .automatic, startTemperature: 70, fullTemperature: 75).validate() }
+}
+
+@Test func coolingSystemThermalPressureReleasesEvenWithLowCPUTemperature() throws {
+    for mode in [CoolingMode.automatic, .manual] {
+        let hardware = FakeCoolingHardware(), owner = UUID()
+        let engine = CoolingEngine(hardware: hardware)
+        let request = mode == .manual ? manualRequest(owner: owner)
+            : CoolingRequest(command: .apply, owner: owner, policy: .init(mode: .automatic))
+        _ = try engine.handle(request, now: 0)
+        hardware.temperature = 55
+        hardware.systemThermalPressure = true
+        engine.tick(now: 1)
+        #expect(!hardware.marker)
+        #expect(hardware.fans.allSatisfy { !$0.forced })
+        #expect(try engine.handle(.init(command: .status), now: 2).message?.contains("тепловом давлении") == true)
+        #expect(throws: VPNError.self) { try engine.handle(request, now: 3) }
+        #expect(!hardware.marker)
+    }
+}
+
+@Test func coolingReapplyCannotClearEmergencyLatchAndReleaseClearsFilter() throws {
+    let hardware = FakeCoolingHardware(), owner = UUID()
+    let engine = CoolingEngine(hardware: hardware)
+    let request = CoolingRequest(command: .apply, owner: owner, policy: .init(mode: .automatic, fullTemperature: 85))
+    hardware.temperature = 86
+    _ = try engine.handle(request, now: 0)
+    hardware.temperature = 82
+    #expect(try engine.handle(request, now: 1).thermalOverride)
+    #expect(hardware.fans[0].target == 5000)
+    #expect(try engine.handle(manualRequest(owner: owner), now: 2).thermalOverride)
+    #expect(hardware.fans[0].target == 5000)
+    let released = try engine.handle(.init(command: .release, owner: owner), now: 3)
+    #expect(released.controlTemperature == nil)
+    #expect(released.automaticReason == nil)
 }
 
 @Test func coolingEncodesOnlySupportedFiniteSMCValues() {
@@ -198,4 +233,11 @@ private func manualRequest(owner: UUID) -> CoolingRequest {
     _ = withUnsafeBytes(of: &size) { Darwin.send(sockets[1], $0.baseAddress, $0.count, 0) }
     #expect(throws: VPNError.self) { try CoolingIPC.receive(from: sockets[0]) }
     #expect(throws: VPNError.self) { try CoolingIPC.send(Data(repeating: 0, count: CoolingIPC.maximumPacket + 1), to: sockets[0]) }
+}
+
+@Test func coolingRecognizesOldHelperRepliesForUpgrade() throws {
+    let legacy = Data(#"{"policy":{"mode":"system","targets":{},"startTemperature":50,"fullTemperature":80},"fans":[],"thermalOverride":false,"controlling":false}"#.utf8)
+    #expect(try JSONDecoder().decode(CoolingStatus.self, from: legacy).algorithmVersion == nil)
+    let current = try JSONEncoder().encode(CoolingStatus())
+    #expect(try JSONDecoder().decode(CoolingStatus.self, from: current).algorithmVersion == 2)
 }

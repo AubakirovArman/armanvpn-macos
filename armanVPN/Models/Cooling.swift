@@ -9,7 +9,7 @@ enum CoolingMode: String, Codable, CaseIterable, Identifiable, Sendable {
     var explanation: String {
         switch self {
         case .system: "macOS сама выбирает обороты. armanVPN только показывает датчики."
-        case .automatic: "armanVPN повышает обороты по температуре самого горячего датчика CPU или GPU."
+        case .automatic: "Обороты плавно следуют за нагревом CPU/GPU. Короткие скачки сглаживаются, сильный нагрев обрабатывается сразу."
         case .manual: "Задайте обороты каждого вентилятора. При 85 °C включается максимум до охлаждения ниже 80 °C."
         }
     }
@@ -49,15 +49,21 @@ struct CoolingFan: Codable, Equatable, Sendable, Identifiable {
 struct CoolingSample: Sendable {
     let fans: [CoolingFan]
     let temperature: Double?
+    var systemThermalPressure = false
 }
 
 struct CoolingStatus: Codable, Sendable {
+    // Optional for decoding replies from helpers installed before 1.7.
+    var algorithmVersion: Int? = 2
     var policy = CoolingPolicy()
     var fans: [CoolingFan] = []
     var temperature: Double?
     var thermalOverride = false
     var message: String?
     var controlling = false
+    var filteredTemperature: Double?
+    var controlTemperature: Double?
+    var automaticReason: String?
 }
 
 struct CoolingRequest: Codable, Sendable {
@@ -73,7 +79,7 @@ struct CoolingReply: Codable, Sendable {
 }
 
 enum CoolingMath {
-    static func targets(policy: CoolingPolicy, sample: CoolingSample, override: Bool) throws -> [Int: Double] {
+    static func targets(policy: CoolingPolicy, sample: CoolingSample, override: Bool, controlTemperature: Double? = nil) throws -> [Int: Double] {
         try policy.validate()
         guard !sample.fans.isEmpty, sample.fans.count <= 10, sample.fans.allSatisfy(\.valid),
               Set(sample.fans.map(\.id)).count == sample.fans.count else {
@@ -81,6 +87,13 @@ enum CoolingMath {
         }
         guard let temperature = sample.temperature, temperature.isFinite, (1...125).contains(temperature) else {
             throw VPNError.message("Датчики CPU/GPU недоступны. Управление возвращено macOS.")
+        }
+        guard !sample.systemThermalPressure else {
+            throw VPNError.message("macOS сообщает о сильном тепловом давлении.")
+        }
+        let curveTemperature = controlTemperature ?? temperature
+        guard curveTemperature.isFinite, (1...125).contains(curveTemperature) else {
+            throw VPNError.message("Недостоверная температура для расчёта охлаждения.")
         }
         if policy.mode == .manual, Set(policy.targets.keys) != Set(sample.fans.map(\.id)) {
             throw VPNError.message("Задайте обороты всех доступных вентиляторов.")
@@ -96,8 +109,8 @@ enum CoolingMath {
             let target: Double
             if override || temperature >= 85 { target = fan.maximum }
             else if policy.mode == .automatic {
-                let fraction = max(0.3, min(1, (temperature - policy.startTemperature) / (policy.fullTemperature - policy.startTemperature)))
-                target = max(fan.controlMinimum, fan.maximum * fraction)
+                let fraction = max(0, min(1, (curveTemperature - policy.startTemperature) / (policy.fullTemperature - policy.startTemperature)))
+                target = fan.controlMinimum + (fan.maximum - fan.controlMinimum) * fraction * fraction
             } else if policy.mode == .manual {
                 guard let value = policy.targets[fan.id], (fan.controlMinimum...fan.maximum).contains(value) else {
                     throw VPNError.message("Обороты выходят за допустимые границы вентилятора \(fan.id + 1).")

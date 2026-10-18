@@ -70,6 +70,12 @@ final class CoolingController {
             guard CoolingService.service.status == .enabled else {
                 throw VPNError.message("Разрешите службу охлаждения в открытых настройках macOS, затем снова нажмите «Применить».")
             }
+            if selectedMode != .system {
+                let installed = try await request(CoolingRequest(command: .status))
+                guard installed.algorithmVersion == 2 else {
+                    throw VPNError.message("Работает прежняя служба охлаждения. Верните системный режим, выберите «Служба → Удалить службу охлаждения», затем разрешите службу заново.")
+                }
+            }
             let policy = CoolingPolicy(mode: selectedMode, targets: selectedMode == .manual ? Dictionary(uniqueKeysWithValues: fans.map { ($0.id, target(for: $0)) }) : [:],
                                        startTemperature: startTemperature, fullTemperature: fullTemperature)
             try policy.validate()

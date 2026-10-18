@@ -6,7 +6,8 @@ mkdir -p "$DERIVED_FILE_DIR/cooling" "$app_contents/MacOS" "$app_contents/Librar
 sources=("$SRCROOT/cooling/main.swift" "$SRCROOT/cooling/SMCCoolingHardware.swift"
     "$SRCROOT/armanVPN/Models/VPNProfile.swift" "$SRCROOT/armanVPN/Models/MacHealth.swift"
     "$SRCROOT/armanVPN/Models/Cooling.swift" "$SRCROOT/armanVPN/Services/MacHealthService.swift"
-    "$SRCROOT/armanVPN/Services/CoolingIPC.swift" "$SRCROOT/armanVPN/Services/CoolingEngine.swift")
+    "$SRCROOT/armanVPN/Services/CoolingIPC.swift" "$SRCROOT/armanVPN/Services/CoolingEngine.swift"
+    "$SRCROOT/armanVPN/Services/AutomaticCooling.swift")
 outputs=()
 for architecture in $ARCHS; do
     output="$DERIVED_FILE_DIR/cooling/helper-$architecture"

@@ -19,6 +19,7 @@ final class CoolingEngine: @unchecked Sendable {
     private var status = CoolingStatus()
     private var expected: [Int: Double] = [:]
     private var ownsHardware = false
+    private var automatic = AutomaticCooling()
 
     init(hardware: any CoolingHardware) { self.hardware = hardware }
 
@@ -46,7 +47,15 @@ final class CoolingEngine: @unchecked Sendable {
                 guard let token = request.owner else { throw VPNError.message("Нет идентификатора сеанса управления.") }
                 guard owner == nil || owner == token else { throw VPNError.message("Охлаждением управляет другая копия приложения.") }
                 let sample = try hardware.sample()
-                let targets = try CoolingMath.targets(policy: policy, sample: sample, override: false)
+                if sample.systemThermalPressure, ownsHardware {
+                    try restore(message: "macOS сообщает о сильном тепловом давлении. Управление возвращено macOS.")
+                }
+                var nextAutomatic = AutomaticCooling()
+                // Reapplying a policy must not cancel an active emergency latch.
+                let thermalOverride = (sample.temperature ?? 0) >= 85 || (status.thermalOverride && (sample.temperature ?? 0) >= 80)
+                let targets = policy.mode == .automatic
+                    ? try nextAutomatic.targets(policy: policy, sample: sample, thermalOverride: thermalOverride, previous: expected, now: now)
+                    : try CoolingMath.targets(policy: policy, sample: sample, override: thermalOverride)
                 do {
                     try hardware.markOwnership()
                     ownsHardware = true
@@ -55,7 +64,9 @@ final class CoolingEngine: @unchecked Sendable {
                     _ = try confirmedSample(targets: targets)
                     status.policy = policy
                     status.controlling = true
-                    status.thermalOverride = (sample.temperature ?? 0) >= 85
+                    status.thermalOverride = thermalOverride
+                    automatic = nextAutomatic
+                    updateAutomaticStatus()
                     status.message = nil
                     expected = targets
                     owner = token
@@ -82,10 +93,16 @@ final class CoolingEngine: @unchecked Sendable {
             }
             if temperature >= 85 { status.thermalOverride = true }
             else if temperature < 80 { status.thermalOverride = false }
-            var targets = try CoolingMath.targets(policy: status.policy, sample: sample, override: status.thermalOverride)
-            // Slow reductions avoid oscillation around temperature thresholds.
-            for (id, value) in targets {
-                if let previous = expected[id], value < previous { targets[id] = max(value, previous - 200) }
+            var targets: [Int: Double]
+            if status.policy.mode == .automatic {
+                targets = try automatic.targets(policy: status.policy, sample: sample, thermalOverride: status.thermalOverride, previous: expected, now: now)
+                updateAutomaticStatus()
+            } else {
+                targets = try CoolingMath.targets(policy: status.policy, sample: sample, override: status.thermalOverride)
+                // Preserve manual-mode emergency recovery behaviour.
+                for (id, value) in targets {
+                    if let previous = expected[id], value < previous { targets[id] = max(value, previous - 200) }
+                }
             }
             if targets != expected {
                 try hardware.setTargets(targets)
@@ -129,6 +146,12 @@ final class CoolingEngine: @unchecked Sendable {
         status.temperature = sample.temperature
     }
 
+    private func updateAutomaticStatus() {
+        status.filteredTemperature = automatic.filteredTemperature
+        status.controlTemperature = automatic.controlTemperature
+        status.automaticReason = status.policy.mode == .automatic ? automatic.reason : nil
+    }
+
     private func restore(message: String?) throws {
         // Keep ownership and the recovery marker if even one reset failed.
         try hardware.restoreSystem()
@@ -140,5 +163,7 @@ final class CoolingEngine: @unchecked Sendable {
         ownsHardware = false; owner = nil; expected = [:]
         status.policy = CoolingPolicy(); status.controlling = false
         status.thermalOverride = false; status.message = message
+        automatic = AutomaticCooling()
+        updateAutomaticStatus()
     }
 }

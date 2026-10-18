@@ -32,6 +32,16 @@ enum PreviewExporter {
         try render(MenuBarPanel(vpn: vpn, tools: tools), size: NSSize(width: 360, height: 520), to: output.appendingPathComponent("menu.png"))
         try render(SuperAppMenuLabel(connected: true, tools: tools).padding(8).frame(width: 300, height: 32).background(.black).foregroundStyle(.white),
                    size: NSSize(width: 300, height: 32), to: output.appendingPathComponent("menu-label.png"))
+        tools.cooling.selectedMode = .automatic
+        tools.cooling.startTemperature = 55
+        tools.cooling.status = CoolingStatus(policy: .init(mode: .automatic, startTemperature: 55),
+            fans: [.init(id: 0, minimum: 1499, maximum: 5348, actual: 2390, target: 2386, forced: true),
+                   .init(id: 1, minimum: 1499, maximum: 5776, actual: 2490, target: 2484, forced: true)],
+            temperature: 67.8, controlling: true, filteredTemperature: 67.2, controlTemperature: 67,
+            automaticReason: "Температура стабильна: удерживаем обороты.")
+        try render(CoolingControlsView(cooling: tools.cooling, fans: tools.health!.fans).padding(24)
+            .background(ArmanBrand.night).preferredColorScheme(.dark), size: NSSize(width: 820, height: 760),
+                   to: output.appendingPathComponent("automatic-cooling.png"))
         for memory in [8, 16, 32, 64] {
             try render(ArmanMemoryCard(personality: ArmanPersonality(memoryGB: memory))
                 .padding(20).frame(width: 600, height: 155).background(ArmanBrand.night).preferredColorScheme(.dark),
