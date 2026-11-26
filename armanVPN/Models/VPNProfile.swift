@@ -10,7 +10,13 @@ struct VPNProfile: Codable, Equatable, Sendable {
     var reconnect = true
     var tunnel = "SSL"
     var transport = "AutoDetect"
+    // Optional so profiles saved before this setting still decode; nil keeps every name on the VPN DNS.
+    var splitDNS: Bool?
 
+    var fullDNS: Bool {
+        get { splitDNS != true }
+        set { splitDNS = !newValue }
+    }
     var endpoint: String { port == "443" ? host.lowercased() : "\(host.lowercased()):\(port)" }
     var credentialID: String { "\(endpoint)|\(username)" }
 

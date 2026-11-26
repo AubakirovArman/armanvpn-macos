@@ -74,7 +74,7 @@ enum EngineClient {
             "server_name": profile.endpoint, "user_name": profile.username, "password": password,
             "password_factor": 1, "log_level": "off", "search_domains": [], "ignore_search_domains": [],
             "dns_servers": [], "ignore_dns_servers": [], "default_route": false, "no_routing": false,
-            "add_routes": [], "ignore_routes": [], "no_dns": false, "no_split_dns": false,
+            "add_routes": [], "ignore_routes": [], "no_dns": false, "no_split_dns": profile.fullDNS,
             "ignore_server_cert": false, "tunnel_type": profile.tunnel, "ca_cert": [certificate.path],
             "login_type": profile.loginType, "cert_type": "None", "cert_path": none,
             "cert_password": none, "cert_id": none, "if_name": none, "keychain": false,

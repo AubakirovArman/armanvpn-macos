@@ -11,6 +11,7 @@ Local modifications are provided in armanvpn.patch:
 - Use the user-approved leaf certificate as the exclusive TLS trust anchor.
 - Allow the gateway's external address to differ from the certificate's internal address.
 - Disable HTTP redirects and verify the SSL tunnel's peer certificate before sending tunnel data.
+- With split DNS off, publish an empty supplemental match domain on macOS so the tunnel DNS servers answer every name.
 
 Build: bash scripts/build-engine.sh
 This script fetches the exact upstream source, applies the supplied patch and builds the engine for aarch64-apple-darwin (Apple Silicon only).

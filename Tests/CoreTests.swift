@@ -32,6 +32,19 @@ import Testing
     #expect(params["default_route"] as? Bool == false)
 }
 
+@Test func fullDNSIsDefaultAndOptional() throws {
+    var profile = VPNProfile()
+    let legacy = #"{"id":"\#(profile.id.uuidString)","host":"vpn.example.com","port":"443","username":"","loginType":"","rememberPassword":false,"reconnect":true,"tunnel":"SSL","transport":"AutoDetect"}"#
+    let decoded = try JSONDecoder().decode(VPNProfile.self, from: Data(legacy.utf8))
+    #expect(decoded.fullDNS)
+    let certificate = URL(fileURLWithPath: "/tmp/peer.der")
+    #expect(EngineClient.parameters(profile: decoded, password: "test-only-secret", certificate: certificate)["no_split_dns"] as? Bool == true)
+    profile.fullDNS = false
+    let restored = try JSONDecoder().decode(VPNProfile.self, from: JSONEncoder().encode(profile))
+    #expect(!restored.fullDNS)
+    #expect(EngineClient.parameters(profile: restored, password: "test-only-secret", certificate: certificate)["no_split_dns"] as? Bool == false)
+}
+
 @Test func migratesLegacyIPsecWithoutLosingAccountSettings() throws {
     let suite = "armanVPN.tests.\(UUID().uuidString)"
     let defaults = try #require(UserDefaults(suiteName: suite))
