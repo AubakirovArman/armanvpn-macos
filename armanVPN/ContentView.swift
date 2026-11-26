@@ -157,13 +157,16 @@ struct ContentView: View {
                         Text("IPsec").tag("IPsec")
                         Text("SSL (по умолчанию)").tag("SSL")
                     }
+                    Text("Маршруты в VPN задаёт шлюз.").font(.caption).foregroundStyle(.secondary)
                     Picker("Транспорт IPsec", selection: $vpn.profile.transport) {
                         Text("Автоматически").tag("AutoDetect")
                         Text("UDP").tag("Udp")
                         Text("TCP 443").tag("Tcpt")
                     }.disabled(vpn.profile.tunnel != "IPsec")
                     Toggle("Восстанавливать после разрыва", isOn: $vpn.profile.reconnect)
-                    Text("Через VPN направляются маршруты, полученные от шлюза.").font(.caption).foregroundStyle(.secondary)
+                    Toggle("Весь DNS через VPN", isOn: $vpn.profile.fullDNS)
+                    Text("Внутренние адреса открываются, даже если шлюз их не перечислил.\nОстальной интернет идёт как обычно.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }.formStyle(.columns).padding(.top, 12)
             }.disclosureGroupStyle(FullWidthDisclosureStyle()).disabled(vpn.busy || vpn.connected)
 

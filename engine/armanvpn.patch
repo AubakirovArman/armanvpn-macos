@@ -74,6 +74,135 @@ index 0e756f9..630f782 100644
  }
  
  #[derive(Debug, Clone, PartialEq)]
+diff --git a/crates/snxcore/src/platform/macos/resolver.rs b/crates/snxcore/src/platform/macos/resolver.rs
+index 8185281..fd10371 100644
+--- a/crates/snxcore/src/platform/macos/resolver.rs
++++ b/crates/snxcore/src/platform/macos/resolver.rs
+@@ -1,7 +1,12 @@
+ use anyhow::anyhow;
+ use async_trait::async_trait;
+ use system_configuration::{
+-    core_foundation::{array::CFArray, base::TCFType, dictionary::CFDictionary, string::CFString},
++    core_foundation::{
++        array::CFArray,
++        base::{CFType, TCFType},
++        dictionary::CFDictionary,
++        string::CFString,
++    },
+     dynamic_store::SCDynamicStoreBuilder,
+ };
+ use tracing::{debug, warn};
+@@ -10,7 +15,6 @@ use crate::platform::{ResolverConfig, ResolverConfigurator};
+ 
+ // SCDynamicStore DNS dictionary keys: literal values of the documented kSCPropNetDNS* constants.
+ const KEY_SERVER_ADDRESSES: &str = "ServerAddresses";
+-const KEY_SEARCH_DOMAINS: &str = "SearchDomains";
+ const KEY_SUPPLEMENTAL_MATCH_DOMAINS: &str = "SupplementalMatchDomains";
+ 
+ const STORE_NAME: &str = "snx-rs";
+@@ -24,6 +28,25 @@ fn cf_string_array<I: IntoIterator<Item = String>>(values: I) -> CFArray<CFStrin
+     CFArray::from_CFTypes(&items)
+ }
+ 
++fn dns_dictionary(config: &ResolverConfig) -> CFDictionary<CFString, CFType> {
++    let servers = cf_string_array(config.dns_servers.iter().map(ToString::to_string));
++
++    // configd turns each match domain into a supplemental resolver and derives the search list
++    // from them, dropping SearchDomains. Without split DNS an extra empty match domain makes the
++    // tunnel resolver answer every name while the default route stays unchanged.
++    let catch_all = (!config.split_dns).then(String::new);
++    let domains = cf_string_array(
++        catch_all
++            .into_iter()
++            .chain(config.search_domains.iter().map(|d| d.name.clone())),
++    );
++
++    CFDictionary::from_CFType_pairs(&[
++        (CFString::new(KEY_SERVER_ADDRESSES), servers.into_CFType()),
++        (CFString::new(KEY_SUPPLEMENTAL_MATCH_DOMAINS), domains.into_CFType()),
++    ])
++}
++
+ #[async_trait]
+ impl ResolverConfigurator for MacosResolverConfigurator {
+     async fn configure(&self, config: &ResolverConfig) -> anyhow::Result<()> {
+@@ -36,22 +59,7 @@ impl ResolverConfigurator for MacosResolverConfigurator {
+             .build()
+             .ok_or_else(|| anyhow!(i18n::tr!("error-no-service-connection")))?;
+ 
+-        let servers = cf_string_array(config.dns_servers.iter().map(ToString::to_string));
+-        let domains = cf_string_array(config.search_domains.iter().map(|d| d.name.clone()));
+-
+-        // Split DNS publishes a supplemental scoped resolver so only the pushed domains resolve
+-        // through the tunnel; otherwise the domains become a global search list.
+-        let domain_key = if config.split_dns {
+-            KEY_SUPPLEMENTAL_MATCH_DOMAINS
+-        } else {
+-            KEY_SEARCH_DOMAINS
+-        };
+-
+-        let dns_dict = CFDictionary::from_CFType_pairs(&[
+-            (CFString::new(KEY_SERVER_ADDRESSES), servers.into_CFType()),
+-            (CFString::new(domain_key), domains.into_CFType()),
+-        ])
+-        .into_untyped();
++        let dns_dict = dns_dictionary(config).into_untyped();
+ 
+         if store.set(self.store_key.as_str(), dns_dict) {
+             Ok(())
+@@ -104,6 +112,52 @@ pub(super) fn cleanup_stale_dns() {
+ 
+ #[cfg(test)]
+ mod tests {
++    use super::*;
++    use crate::platform::SearchDomain;
++
++    fn string_array(dict: &CFDictionary<CFString, CFType>, key: &str) -> Option<Vec<String>> {
++        let value = dict.find(CFString::new(key))?;
++        let array = value.downcast::<CFArray>()?;
++        Some(
++            array
++                .iter()
++                .map(|item| unsafe { CFString::wrap_under_get_rule(*item as _) }.to_string())
++                .collect(),
++        )
++    }
++
++    #[test]
++    fn dns_dictionary_scopes_split_dns_to_pushed_domains() {
++        let config = ResolverConfig {
++            split_dns: true,
++            search_domains: vec![SearchDomain::new("corp.example", true)],
++            dns_servers: vec!["10.0.0.1".parse().unwrap()],
++        };
++        let dict = dns_dictionary(&config);
++        assert_eq!(
++            string_array(&dict, KEY_SERVER_ADDRESSES),
++            Some(vec!["10.0.0.1".to_string()])
++        );
++        assert_eq!(
++            string_array(&dict, KEY_SUPPLEMENTAL_MATCH_DOMAINS),
++            Some(vec!["corp.example".to_string()])
++        );
++    }
++
++    #[test]
++    fn dns_dictionary_without_split_dns_matches_every_name() {
++        let config = ResolverConfig {
++            split_dns: false,
++            search_domains: vec![SearchDomain::new("corp.example", false)],
++            dns_servers: vec!["10.0.0.1".parse().unwrap()],
++        };
++        let dict = dns_dictionary(&config);
++        assert_eq!(
++            string_array(&dict, KEY_SUPPLEMENTAL_MATCH_DOMAINS),
++            Some(vec![String::new(), "corp.example".to_string()])
++        );
++    }
++
+     #[test]
+     fn cf_string_array_length_matches_input() {
+         assert_eq!(super::cf_string_array(Vec::<String>::new()).len(), 0);
 diff --git a/crates/snxcore/src/server.rs b/crates/snxcore/src/server.rs
 index 927f980..38f2b01 100644
 --- a/crates/snxcore/src/server.rs
